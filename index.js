@@ -3,24 +3,23 @@ import axios from "axios";
 import qs from "qs";
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3000;
 
-// ================================
-// TOKEN CACHE
-// ================================
+// =============================
+//   TOKEN CACHE (1 hour)
+// =============================
 let cachedToken = null;
-let tokenExpiry = 0; // unix timestamp
+let tokenExpiry = 0;
 
 async function getToken() {
     const now = Math.floor(Date.now() / 1000);
 
-    // If token exists + not expired → use it
+    // Reuse token if still valid
     if (cachedToken && now < tokenExpiry - 60) {
         return cachedToken;
     }
 
-    console.log("🔐 Fetching NEW token from Azure AD...");
-
+    // Fetch new token
     const tokenUrl = `https://login.microsoftonline.com/${process.env.TENANT_ID}/oauth2/v2.0/token`;
 
     const data = qs.stringify({
@@ -35,79 +34,64 @@ async function getToken() {
     });
 
     cachedToken = res.data.access_token;
-    tokenExpiry = now + res.data.expires_in; // usually 3600 seconds
+    tokenExpiry = now + res.data.expires_in;
 
-    console.log("✅ Token cached for 60 minutes.");
-
+    console.log("🔐 New token fetched");
     return cachedToken;
 }
 
-// ================================
-// MOT RESULT CACHE (optional)
-// ================================
-// VRM → Cached API response
-const motCache = new Map();
-const MOT_CACHE_SECONDS = 600; // cache vehicle lookup for 10 min (adjust if you want)
+// =============================
+//   VRM CACHE (5 minutes)
+// =============================
+const vrmCache = {};  
+// Format: vrmCache["X6ATK"] = { data: {...}, expires: timestamp }
 
-function getCachedMot(vrm) {
-    const entry = motCache.get(vrm);
-    if (!entry) return null;
+const CACHE_LIFETIME = 60 * 5; // 5 minutes
 
-    const age = (Date.now() - entry.timestamp) / 1000;
-    if (age > MOT_CACHE_SECONDS) {
-        motCache.delete(vrm);
-        return null;
-    }
-
-    return entry.data;
-}
-
-function setCachedMot(vrm, data) {
-    motCache.set(vrm, {
-        data,
-        timestamp: Date.now()
-    });
-}
-
-// ================================
-// MAIN API ENDPOINT
-// ================================
+// =============================
+//   MOT API ENDPOINT
+// =============================
 app.get("/mot", async (req, res) => {
     try {
         const vrm = req.query.vrm;
-        if (!vrm) return res.status(400).json({ error: "Missing vrm" });
 
-        // CHECK MOT CACHE FIRST
-        const cached = getCachedMot(vrm);
-        if (cached) {
-            return res.json({
-                cached: true,
-                ...cached
-            });
+        if (!vrm) {
+            return res.status(400).json({ error: "Missing ?vrm=" });
         }
 
+        const now = Math.floor(Date.now() / 1000);
+
+        // 1️⃣ Return cached result if exists AND not expired
+        if (vrmCache[vrm] && now < vrmCache[vrm].expires) {
+            console.log(`⚡ Cache hit for ${vrm}`);
+            return res.json(vrmCache[vrm].data);
+        }
+
+        console.log(`🌐 Cache MISS for ${vrm} — fetching from DVSA`);
+
+        // 2️⃣ Get token
         const token = await getToken();
 
-        const response = await axios.get(
-            `https://history.mot.api.gov.uk/v1/trade/vehicles/registration/${vrm}`,
-            {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "X-API-Key": process.env.API_KEY
-                }
+        // 3️⃣ Request DVSA MOT API
+        const url = `https://history.mot.api.gov.uk/v1/trade/vehicles/registration/${encodeURIComponent(vrm)}`;
+
+        const response = await axios.get(url, {
+            headers: {
+                Authorization: `Bearer ${token}`,
+                "X-API-Key": process.env.API_KEY
             }
-        );
-
-        // SAVE TO CACHE
-        setCachedMot(vrm, response.data);
-
-        res.json({
-            cached: false,
-            ...response.data
         });
 
+        // 4️⃣ Store in cache
+        vrmCache[vrm] = {
+            data: response.data,
+            expires: now + CACHE_LIFETIME
+        };
+
+        return res.json(response.data);
+
     } catch (err) {
-        console.error("❌ MOT API error:", err.response?.data || err.message);
+        console.error("❌ MOT API ERROR:", err.response?.data || err.message);
         res.status(500).json({
             error: "Failed to fetch MOT data",
             details: err.response?.data || err.message
@@ -115,9 +99,9 @@ app.get("/mot", async (req, res) => {
     }
 });
 
-// ================================
-// START SERVER
-// ================================
+// =============================
+//   START SERVER
+// =============================
 app.listen(PORT, () => {
     console.log(`🚀 MOT Backend running on port ${PORT}`);
 });
