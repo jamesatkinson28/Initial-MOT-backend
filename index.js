@@ -26,7 +26,7 @@ async function getToken() {
         client_id: process.env.CLIENT_ID,
         client_secret: process.env.CLIENT_SECRET,
         grant_type: "client_credentials",
-        scope: `api://${process.env.API_CLIENT_ID}/.default`
+        scope: "https://tapi.dvsa.gov.uk/.default"
     });
 
     const res = await axios.post(tokenUrl, data, {
