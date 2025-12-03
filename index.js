@@ -9,6 +9,8 @@ import { authRouter } from "./routes/auth.js";
 import { specRouter } from "./routes/spec.js";
 import { garageRouter } from "./routes/garage.js";
 
+app.use("/api", specRouter);
+
 // Load .env if present (locally)
 dotenv.config();
 
