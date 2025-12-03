@@ -9,7 +9,8 @@ import { authRouter } from "./routes/auth.js";
 import { specRouter } from "./routes/spec.js";
 import { garageRouter } from "./routes/garage.js";
 
-app.use("/api", specRouter);
+// ❌ IMPORTANT: this was causing the crash because `app` didn't exist yet
+// app.use("/api", specRouter);
 
 // Load .env if present (locally)
 dotenv.config();
@@ -107,9 +108,8 @@ app.get("/mot", async (req, res) => {
     const response = await axios.get(url, {
       headers: {
         Authorization: `Bearer ${token}`,
-        "X-API-Key": process.env.USE_DVLA_TEST === "true"
-  	  ? process.env.DVLA_API_KEY_TEST
-  	  : process.env.DVLA_API_KEY_LIVE
+        // Use DVSA key here. If you still use API_KEY, this will fallback to it.
+        "X-API-Key": process.env.DVSA_API_KEY || process.env.API_KEY,
       },
     });
 
