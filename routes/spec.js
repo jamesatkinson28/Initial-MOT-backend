@@ -1,27 +1,35 @@
+// routes/spec.js
 import express from "express";
 import pg from "pg";
 import axios from "axios";
+import { authRequired } from "../middleware/auth.js";
 
-export const specRouter = express.Router();
+const specRouter = express.Router();
+export default specRouter;
 
 // -----------------------------
 // Database
 // -----------------------------
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: false },
 });
 
 // -----------------------------
 // GET FULL SPEC (requires unlocked)
 // -----------------------------
-specRouter.get("/spec-options", async (req, res) => {
+// GET /api/spec-options?vrm=ABC123
+specRouter.get("/spec-options", authRequired, async (req, res) => {
   try {
     const vrm = req.query.vrm?.toUpperCase();
-    const userId = req.user?.id; // from auth middleware later
+    const userId = req.user?.id;
 
     if (!vrm) {
       return res.status(400).json({ error: "VRM is required" });
+    }
+
+    if (!userId) {
+      return res.status(401).json({ error: "User not authenticated" });
     }
 
     // Check if user already unlocked
@@ -33,7 +41,7 @@ specRouter.get("/spec-options", async (req, res) => {
     if (unlocked.rows.length === 0) {
       return res.status(403).json({
         success: false,
-        error: "This vehicle’s full specification is locked."
+        error: "This vehicle’s full specification is locked.",
       });
     }
 
@@ -44,11 +52,10 @@ specRouter.get("/spec-options", async (req, res) => {
 
     return res.json({
       success: true,
-      data: vdglRes.data
+      data: vdglRes.data,
     });
-
   } catch (err) {
-    console.error("SPEC OPTIONS ERROR:", err);
+    console.error("SPEC OPTIONS ERROR:", err.response?.data || err.message);
     return res.status(500).json({ error: "Failed to fetch full spec" });
   }
 });
@@ -56,13 +63,22 @@ specRouter.get("/spec-options", async (req, res) => {
 // -----------------------------
 // UNLOCK SPEC FOR A USER
 // -----------------------------
-specRouter.post("/unlock-spec", async (req, res) => {
+// POST /api/unlock-spec  { vrm }
+specRouter.post("/unlock-spec", authRequired, async (req, res) => {
   try {
-    const { vrm } = req.body;
-    const userId = req.user?.id; // will come from token later
+    const { vrm } = req.body || {};
+    const userId = req.user?.id;
 
     if (!vrm) {
-      return res.status(400).json({ success: false, error: "VRM missing" });
+      return res
+        .status(400)
+        .json({ success: false, error: "VRM missing" });
+    }
+
+    if (!userId) {
+      return res
+        .status(401)
+        .json({ success: false, error: "User not authenticated" });
     }
 
     // Save unlock if not already saved
@@ -76,12 +92,11 @@ specRouter.post("/unlock-spec", async (req, res) => {
     );
 
     return res.json({ success: true });
-
   } catch (err) {
-    console.error("UNLOCK SPEC ERROR:", err);
+    console.error("UNLOCK SPEC ERROR:", err.response?.data || err.message);
     return res.status(500).json({
       success: false,
-      error: "Failed to unlock this vehicle spec"
+      error: "Failed to unlock this vehicle spec",
     });
   }
 });

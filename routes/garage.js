@@ -1,9 +1,10 @@
 // routes/garage.js
 import express from "express";
-import { query } from "../db/client.js";
+import { query } from "../db.js";
 import { authRequired } from "../middleware/auth.js";
 
-export const garageRouter = express.Router();
+const garageRouter = express.Router();
+export default garageRouter;
 
 const normaliseVrm = (vrm) =>
   vrm ? vrm.replace(/\s+/g, "").toUpperCase() : "";

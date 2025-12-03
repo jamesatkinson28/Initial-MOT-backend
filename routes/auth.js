@@ -1,10 +1,11 @@
 // routes/auth.js
 import express from "express";
 import bcrypt from "bcryptjs";
-import { query } from "../db/client.js";
+import { query } from "../db.js";
 import { authRequired, signUserToken } from "../middleware/auth.js";
 
-export const authRouter = express.Router();
+const authRouter = express.Router();
+export default authRouter;
 
 // Helper: normalise email
 const normaliseEmail = (email) => email.trim().toLowerCase();
