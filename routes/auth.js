@@ -2,6 +2,8 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { query } from "../db/db.js";
+import { authRequired } from "../middleware/auth.js";
+
 
 const router = express.Router();
 
@@ -102,5 +104,11 @@ router.post("/login", async (req, res) => {
     return res.status(500).json({ error: "Login failed" });
   }
 });
+// GET /api/auth/me  (who am I?)
+router.get("/me", authRequired, async (req, res) => {
+  // req.user is set by authRequired middleware
+  res.json({ user: req.user });
+});
+
 
 export default router;
