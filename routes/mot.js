@@ -1,10 +1,8 @@
-// routes/mot.js
 import express from "express";
 import axios from "axios";
 import qs from "qs";
 
 const motRouter = express.Router();
-export default motRouter;
 
 // TOKEN CACHE
 let cachedToken = null;
@@ -36,12 +34,10 @@ async function getToken() {
   return cachedToken;
 }
 
-// VRM CACHE (5 min)
 const vrmCache = {};
 const CACHE_LIFETIME = 60 * 5;
 
-// MOT ENDPOINT
-// Will be mounted at /mot so final URL is: GET /mot?vrm=ABC123
+// GET /mot?vrm=XYZ
 motRouter.get("/", async (req, res) => {
   try {
     const vrm = req.query.vrm;
@@ -81,3 +77,5 @@ motRouter.get("/", async (req, res) => {
     });
   }
 });
+
+export default motRouter;
