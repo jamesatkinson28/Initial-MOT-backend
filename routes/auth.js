@@ -1,7 +1,8 @@
 // routes/auth.js
 import express from "express";
 import bcrypt from "bcryptjs";
-import { query } from "../db.js";
+import { query } from "../db/client.js";
+
 import { authRequired, signUserToken } from "../middleware/auth.js";
 
 const authRouter = express.Router();

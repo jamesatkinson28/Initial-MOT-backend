@@ -1,6 +1,7 @@
 // routes/garage.js
 import express from "express";
-import { query } from "../db.js";
+import { query } from "../db/client.js";
+
 import { authRequired } from "../middleware/auth.js";
 
 const garageRouter = express.Router();
