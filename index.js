@@ -2,17 +2,22 @@ import express from "express";
 import axios from "axios";
 import qs from "qs";
 import dotenv from "dotenv";
+import cors from "cors";
+
 dotenv.config();
 
+// Routers
 import authRouter from "./routes/auth.js";
+
+// DB
 import { query } from "./db/db.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Allow JSON + CORS
+// Middleware
 app.use(express.json());
-app.use(require("cors")());
+app.use(cors());
 
 // =============================
 //   DATABASE TEST ENDPOINT
@@ -33,7 +38,7 @@ app.get("/test-db", async (req, res) => {
 app.use("/api/auth", authRouter);
 
 // =============================
-//   TOKEN CACHE (1 hour)
+//   DVSA TOKEN CACHE
 // =============================
 let cachedToken = null;
 let tokenExpiry = 0;
@@ -62,17 +67,18 @@ async function getToken() {
   tokenExpiry = now + res.data.expires_in;
 
   console.log("🔐 New DVSA token fetched");
+
   return cachedToken;
 }
 
 // =============================
-//   VRM CACHE (5 minutes)
+//   VRM CACHE
 // =============================
 const vrmCache = {};
 const CACHE_LIFETIME = 60 * 5;
 
 // =============================
-//   MOT API ENDPOINT
+//   MOT ENDPOINT
 // =============================
 app.get("/mot", async (req, res) => {
   try {
@@ -87,7 +93,7 @@ app.get("/mot", async (req, res) => {
       return res.json(vrmCache[vrm].data);
     }
 
-    console.log(`🌐 Cache MISS for ${vrm} — fetching from DVSA`);
+    console.log(`🌐 Cache MISS for ${vrm}`);
 
     const token = await getToken();
 
@@ -108,6 +114,7 @@ app.get("/mot", async (req, res) => {
     };
 
     res.json(response.data);
+
   } catch (err) {
     console.error("❌ MOT API ERROR:", err.response?.data || err.message);
     res.status(500).json({
