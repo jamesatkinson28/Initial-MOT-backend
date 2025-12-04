@@ -9,6 +9,8 @@ dotenv.config();
 // Routers
 import authRouter from "./routes/auth.js";
 import garageRouter from "./routes/garage.js";
+import specRouter from "./routes/spec.js";
+
 
 // DB
 import { query } from "./db/db.js";
@@ -20,6 +22,8 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(cors());
 app.use("/api/garage", garageRouter);
+app.use("/api", specRouter);
+
 
 // =============================
 //   DATABASE TEST ENDPOINT
