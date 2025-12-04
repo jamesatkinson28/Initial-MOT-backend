@@ -2,6 +2,10 @@ import express from "express";
 import axios from "axios";
 import qs from "qs";
 
+import authRouter from "./routes/auth.js";
+
+app.use("/api/auth", authRouter);
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
