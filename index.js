@@ -6,6 +6,19 @@ import authRouter from "./routes/auth.js";
 
 app.use("/api/auth", authRouter);
 
+import { query } from "./db/db.js";
+
+app.get("/test-db", async (req, res) => {
+  try {
+    const result = await query("SELECT NOW()");
+    res.json({ success: true, time: result.rows[0].now });
+  } catch (err) {
+    console.error("DB TEST ERROR:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
