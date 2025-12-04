@@ -2,101 +2,87 @@ import express from "express";
 import axios from "axios";
 import qs from "qs";
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const motRouter = express.Router();
 
-// =============================
-//   TOKEN CACHE (1 hour)
-// =============================
+// TOKEN CACHE
 let cachedToken = null;
 let tokenExpiry = 0;
 
 async function getToken() {
-    const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(Date.now() / 1000);
 
-    // Reuse token if still valid
-    if (cachedToken && now < tokenExpiry - 60) {
-        return cachedToken;
-    }
-
-    // Fetch new token
-    const tokenUrl = `https://login.microsoftonline.com/${process.env.TENANT_ID}/oauth2/v2.0/token`;
-
-    const data = qs.stringify({
-        client_id: process.env.CLIENT_ID,
-        client_secret: process.env.CLIENT_SECRET,
-        grant_type: "client_credentials",
-        scope: "https://tapi.dvsa.gov.uk/.default"
-    });
-
-    const res = await axios.post(tokenUrl, data, {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" }
-    });
-
-    cachedToken = res.data.access_token;
-    tokenExpiry = now + res.data.expires_in;
-
-    console.log("🔐 New token fetched");
+  if (cachedToken && now < tokenExpiry - 60) {
     return cachedToken;
+  }
+
+  const tokenUrl = `https://login.microsoftonline.com/${process.env.TENANT_ID}/oauth2/token`;
+
+  const data = qs.stringify({
+    grant_type: "client_credentials",
+    client_id: process.env.CLIENT_ID,
+    client_secret: process.env.CLIENT_SECRET,
+    resource: "https://tapi.dvsa.gov.uk/"
+  });
+
+  let response;
+  try {
+    response = await axios.post(tokenUrl, data, {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      timeout: 8000,
+    });
+  } catch (err) {
+    console.error("TOKEN ERROR:", err.response?.data || err.message);
+    throw new Error("Token request failed");
+  }
+
+  cachedToken = response.data.access_token;
+  tokenExpiry = now + response.data.expires_in;
+
+  return cachedToken;
 }
 
-// =============================
-//   VRM CACHE (5 minutes)
-// =============================
-const vrmCache = {};  
-// Format: vrmCache["X6ATK"] = { data: {...}, expires: timestamp }
+// VRM CACHE
+const vrmCache = {};
+const CACHE_LIFETIME = 60 * 5;
 
-const CACHE_LIFETIME = 60 * 5; // 5 minutes
+// MAIN ROUTE
+motRouter.get("/", async (req, res) => {
+  try {
+    const vrm = req.query.vrm;
+    if (!vrm) return res.status(400).json({ error: "Missing ?vrm=" });
 
-// =============================
-//   MOT API ENDPOINT
-// =============================
-app.get("/mot", async (req, res) => {
-    try {
-        const vrm = req.query.vrm;
+    const now = Math.floor(Date.now() / 1000);
 
-        if (!vrm) {
-            return res.status(400).json({ error: "Missing ?vrm=" });
-        }
-
-        const now = Math.floor(Date.now() / 1000);
-
-        // 1️⃣ Return cached result if exists AND not expired
-        if (vrmCache[vrm] && now < vrmCache[vrm].expires) {
-            console.log(`⚡ Cache hit for ${vrm}`);
-            return res.json(vrmCache[vrm].data);
-        }
-
-        console.log(`🌐 Cache MISS for ${vrm} — fetching from DVSA`);
-
-        // 2️⃣ Get token
-        const token = await getToken();
-
-        // 3️⃣ Request DVSA MOT API
-        const url = `https://history.mot.api.gov.uk/v1/trade/vehicles/registration/${encodeURIComponent(vrm)}`;
-
-        const response = await axios.get(url, {
-            headers: {
-                Authorization: `Bearer ${token}`,
-                "X-API-Key": process.env.API_KEY
-            }
-        });
-
-        // 4️⃣ Store in cache
-        vrmCache[vrm] = {
-            data: response.data,
-            expires: now + CACHE_LIFETIME
-        };
-
-        return res.json(response.data);
-
-    } catch (err) {
-        console.error("❌ MOT API ERROR:", err.response?.data || err.message);
-        res.status(500).json({
-            error: "Failed to fetch MOT data",
-            details: err.response?.data || err.message
-        });
+    if (vrmCache[vrm] && now < vrmCache[vrm].expires) {
+      return res.json(vrmCache[vrm].data);
     }
+
+    const token = await getToken();
+
+    const url = `https://history.mot.api.gov.uk/v1/trade/vehicles/registration/${encodeURIComponent(vrm)}`;
+
+    const result = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-API-Key": process.env.API_KEY,
+      },
+      timeout: 8000,
+    });
+
+    vrmCache[vrm] = {
+      data: result.data,
+      expires: now + CACHE_LIFETIME,
+    };
+
+    return res.json(result.data);
+  } catch (err) {
+    console.error("MOT ERROR:", err.response?.data || err.message);
+
+    return res.status(500).json({
+      error: "Failed to fetch MOT data",
+      details: err.response?.data || err.message,
+    });
+  }
 });
 
 export default motRouter;
