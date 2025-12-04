@@ -1,49 +1,25 @@
 import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
-
-dotenv.config();
+import axios from "axios";
+import qs from "qs";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json());
-
-// =====================================================
-//   IMPORT ROUTERS
-// =====================================================
-import authRouter from "./routes/auth.js";
-import garageRouter from "./routes/garage.js";
-import specRouter from "./routes/spec.js";
-
-// =====================================================
-//   MOUNT ROUTES
-// =====================================================
-app.use("/api/auth", authRouter);
-app.use("/api/garage", garageRouter);
-app.use("/api", specRouter);
-
-// =====================================================
-//   MOT ENDPOINT (FULL WORKING VERSION)
-// =====================================================
-
-import axios from "axios";
-import qs from "qs";
-
-// TOKEN CACHE
+// =============================
+//   TOKEN CACHE (1 hour)
+// =============================
 let cachedToken = null;
 let tokenExpiry = 0;
 
 async function getToken() {
     const now = Math.floor(Date.now() / 1000);
 
+    // Reuse token if still valid
     if (cachedToken && now < tokenExpiry - 60) {
         return cachedToken;
     }
 
+    // Fetch new token
     const tokenUrl = `https://login.microsoftonline.com/${process.env.TENANT_ID}/oauth2/v2.0/token`;
 
     const data = qs.stringify({
@@ -60,15 +36,21 @@ async function getToken() {
     cachedToken = res.data.access_token;
     tokenExpiry = now + res.data.expires_in;
 
-    console.log("🔐 New DVSA token fetched");
-
+    console.log("🔐 New token fetched");
     return cachedToken;
 }
 
-const vrmCache = {};
-const CACHE_LIFETIME = 60 * 5;
+// =============================
+//   VRM CACHE (5 minutes)
+// =============================
+const vrmCache = {};  
+// Format: vrmCache["X6ATK"] = { data: {...}, expires: timestamp }
 
-// MAIN MOT ROUTE — EXACTLY LIKE THE WORKING VERSION
+const CACHE_LIFETIME = 60 * 5; // 5 minutes
+
+// =============================
+//   MOT API ENDPOINT
+// =============================
 app.get("/mot", async (req, res) => {
     try {
         const vrm = req.query.vrm;
@@ -79,18 +61,19 @@ app.get("/mot", async (req, res) => {
 
         const now = Math.floor(Date.now() / 1000);
 
+        // 1️⃣ Return cached result if exists AND not expired
         if (vrmCache[vrm] && now < vrmCache[vrm].expires) {
             console.log(`⚡ Cache hit for ${vrm}`);
             return res.json(vrmCache[vrm].data);
         }
 
-        console.log(`🌐 Cache MISS for ${vrm}`);
+        console.log(`🌐 Cache MISS for ${vrm} — fetching from DVSA`);
 
+        // 2️⃣ Get token
         const token = await getToken();
 
-        const url = `https://history.mot.api.gov.uk/v1/trade/vehicles/registration/${encodeURIComponent(
-            vrm
-        )}`;
+        // 3️⃣ Request DVSA MOT API
+        const url = `https://history.mot.api.gov.uk/v1/trade/vehicles/registration/${encodeURIComponent(vrm)}`;
 
         const response = await axios.get(url, {
             headers: {
@@ -99,6 +82,7 @@ app.get("/mot", async (req, res) => {
             }
         });
 
+        // 4️⃣ Store in cache
         vrmCache[vrm] = {
             data: response.data,
             expires: now + CACHE_LIFETIME
@@ -107,24 +91,17 @@ app.get("/mot", async (req, res) => {
         return res.json(response.data);
 
     } catch (err) {
-        console.error("❌ MOT ERROR:", err.response?.data || err.message);
-        return res.status(500).json({
+        console.error("❌ MOT API ERROR:", err.response?.data || err.message);
+        res.status(500).json({
             error: "Failed to fetch MOT data",
             details: err.response?.data || err.message
         });
     }
 });
 
-// =====================================================
-//   ROOT
-// =====================================================
-app.get("/", (req, res) => {
-    res.send("GarageGPT Backend Running");
-});
-
-// =====================================================
+// =============================
 //   START SERVER
-// =====================================================
+// =============================
 app.listen(PORT, () => {
-    console.log(`🚀 Backend running on port ${PORT}`);
+    console.log(`🚀 MOT Backend running on port ${PORT}`);
 });
