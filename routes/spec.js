@@ -45,158 +45,105 @@ async function resetMonthlyIfNeeded(user_id) {
 // ------------------------------------------------------------
 // CLEAN SPEC BUILDER (EXTENDED VERSION)
 // ------------------------------------------------------------
-function buildCleanSpec(apiResults) {
-  const vd = apiResults?.VehicleDetails || {};
-  const vId = vd.VehicleIdentification || {};
-  const vTech = vd.DvlaTechnicalDetails || {};
-  const vStatus = vd.VehicleStatus || {};
-  const vHist = vd.VehicleHistory || {};
+// ----------------------
+// NORMALIZE SPEC FUNCTION
+// ----------------------
+function normalizeSpec(raw, vrm) {
+  const vehicle = raw?.Results?.VehicleDetails;
+  const model = raw?.Results?.ModelDetails;
 
-  const model = apiResults?.ModelDetails || {};
-  const mId = model.ModelIdentification || {};
-  const mBody = model.BodyDetails || {};
-  const dims = model.Dimensions || {};
-  const weights = model.Weights || {};
-  const powertrain = model.Powertrain || {};
-  const ice = powertrain.IceDetails || {};
-  const perf = model.Performance || {};
-  const emissions = model.Emissions || {};
-  const safety = model.Safety || {};
-  const trans = model.Transmission || {};
+  const tech = vehicle?.DvlaTechnicalDetails || {};
+  const body = model?.BodyDetails || {};
+  const dims = model?.Dimensions || {};
+  const weights = model?.Weights || {};
+  const perf = model?.Performance || {};
+  const ice = model?.Powertrain?.IceDetails || {};
+  const trans = model?.Powertrain?.Transmission || {};
+  const ncap = model?.Safety?.EuroNcap || {};
+  const emissions = model?.Emissions || {};
 
   return {
-    vrm: vId.Vrm || null,
-
-    // -------------------------
-    // BASIC VEHICLE INFO
-    // -------------------------
-    make: mId.Make || vId.DvlaMake || "Unknown",
-    model: mId.Range || vId.DvlaModel || "Unknown",
-    variant: mId.ModelVariant || null,
-    mark: mId.Mark || null,
-    year: vId.YearOfManufacture || null,
-    country_of_origin: mId.CountryOfOrigin || null,
-
-    // -------------------------
-    // ENGINE DETAILS
-    // -------------------------
-    engine: {
-      capacity_cc: ice.EngineCapacityCc || vTech.EngineCapacityCc || null,
-      capacity_litres: ice.EngineCapacityLitres || null,
-      cylinders: ice.NumberOfCylinders || null,
-      aspiration: ice.Aspiration || null,
-      fuel_type: vId.DvlaFuelType || powertrain.FuelType || null,
-
-      power_bhp: perf?.Power?.Bhp || null,
-      power_kw: perf?.Power?.Kw || null,
-      torque_nm: perf?.Torque?.Nm || null,
-
-      bore_mm: ice.BoreMm || null,
-      stroke_mm: ice.StrokeMm || null,
-      valve_gear: ice.ValveGear || null,
-      valves_per_cylinder: ice.ValvesPerCylinder || null,
-      cylinder_arrangement: ice.CylinderArrangement || null
-    },
-
-    // -------------------------
-    // PERFORMANCE
-    // -------------------------
-    performance: {
-      zero_to_60_mph: perf?.Statistics?.ZeroToSixtyMph || null,
-      zero_to_100_kph: perf?.Statistics?.ZeroToOneHundredKph || null,
-      top_speed_mph: perf?.Statistics?.MaxSpeedMph || null,
-      top_speed_kph: perf?.Statistics?.MaxSpeedKph || null
-    },
-
-    // -------------------------
-    // DIMENSIONS
-    // -------------------------
-    dimensions: {
-      height_mm: dims.HeightMm || null,
-      length_mm: dims.LengthMm || null,
-      width_mm: dims.WidthMm || null,
-      wheelbase_mm: dims.WheelbaseLengthMm || null
-    },
-
-    // -------------------------
-    // WEIGHTS
-    // -------------------------
-    weights: {
-      kerb_weight_kg: weights.KerbWeightKg || null,
-      gross_vehicle_weight_kg: weights.GrossVehicleWeightKg || null,
-      payload_kg: weights.PayloadWeightKg || null
-    },
-
-    // -------------------------
-    // DVLA DATA
-    // -------------------------
-    dvla: {
-      body_type: vId.DvlaBodyType || null,
-      fuel_type: vId.DvlaFuelType || null,
-      co2: vStatus?.VehicleExciseDutyDetails?.DvlaCo2 || emissions.ManufacturerCo2 || null,
-      tax_band: vStatus?.VehicleExciseDutyDetails?.DvlaCo2Band || null,
-      original_colour: vHist?.ColourDetails?.OriginalColour || null
-    },
-
-    // -------------------------
-    // BODY DETAILS
-    // -------------------------
+    vrm,
     body: {
-      doors: mBody.NumberOfDoors || null,
-      seats: mBody.NumberOfSeats || null,
-      axles: mBody.NumberOfAxles || null,
-      fuel_tank_litres: mBody.FuelTankCapacityLitres || null,
-      driving_axle:
-		trans.DrivingAxle ||
-		powertrain?.TransmissionDetailsList?.[0]?.DrivingAxle ||
-		null
+      axles: body.NumberOfAxles ?? null,
+      doors: body.NumberOfDoors ?? null,
+      seats: body.NumberOfSeats ?? tech.NumberOfSeats ?? null,
+      driving_axle: trans.DrivingAxle ?? null,
+      fuel_tank_litres: body.FuelTankCapacityLitres ?? null
+    },
+    dvla: {
+      co2: vehicle?.VehicleStatus?.VehicleExciseDutyDetails?.DvlaCo2 ?? null,
+      tax_band: vehicle?.VehicleStatus?.VehicleExciseDutyDetails?.DvlaCo2Band ?? null,
+      body_type: vehicle?.VehicleIdentification?.DvlaBodyType ?? null,
+      fuel_type: vehicle?.VehicleIdentification?.DvlaFuelType ?? null,
+      original_colour: vehicle?.VehicleHistory?.ColourDetails?.OriginalColour ?? null
+    },
+    make: model?.ModelIdentification?.Make ?? null,
+    model: model?.ModelIdentification?.Range ?? null,
+    variant: model?.ModelIdentification?.ModelVariant ?? null,
+    mark: model?.ModelIdentification?.Mark ?? null,
+    country_of_origin: model?.ModelIdentification?.CountryOfOrigin ?? null,
+    year: vehicle?.VehicleIdentification?.YearOfManufacture ?? null,
+
+    engine: {
+      capacity_cc: ice.EngineCapacityCc ?? null,
+      capacity_litres: ice.EngineCapacityLitres ?? null,
+      cylinders: ice.NumberOfCylinders ?? null,
+      cylinder_arrangement: ice.CylinderArrangement ?? null,
+      valves_per_cylinder: ice.ValvesPerCylinder ?? null,
+      valve_gear: ice.ValveGear ?? null,
+      bore_mm: ice.BoreMm ?? null,
+      stroke_mm: ice.StrokeMm ?? null,
+      aspiration: ice.Aspiration ?? null,
+      torque_nm: perf?.Torque?.Nm ?? null,
+      power_kw: perf?.Power?.Kw ?? null,
+      power_bhp: perf?.Power?.Bhp ?? null,
+      fuel_type: model?.Powertrain?.FuelType ?? null
     },
 
-    // -------------------------
-    // TRANSMISSION
-    // -------------------------
-    const primaryTrans = raw?.Results?.ModelDetails?.Powertrain?.Transmission || {};
-	const evTrans = raw?.Results?.ModelDetails?.Powertrain?.TransmissionDetailsList?.[0] || {};
-
-	transmission: {
-	  type:
-		primaryTrans.TransmissionType ||
-		evTrans.TransmissionType ||
-		null,
-
-	  drive:
-		primaryTrans.DriveType ||
-		evTrans.DriveType ||
-		null,
-
-	  gears:
-		primaryTrans.NumberOfGears ||
-		evTrans.NumberOfGears ||
-		null
-    },
-
-    // -------------------------
-    // EMISSIONS
-    // -------------------------
-    emissions: {
-      euro_status: emissions.EuroStatus || null
-    },
-
-    // -------------------------
-    // SAFETY
-    // -------------------------
     safety: {
-      ncap_star_rating: safety?.EuroNcap?.NcapStarRating || null,
-      ncap_adult_percent: safety?.EuroNcap?.NcapAdultPercent || null,
-      ncap_child_percent: safety?.EuroNcap?.NcapChildPercent || null,
-      ncap_pedestrian_percent: safety?.EuroNcap?.NcapPedestrianPercent || null,
-      ncap_safety_assist_percent: safety?.EuroNcap?.NcapSafetyAssistPercent || null
+      ncap_star_rating: ncap.NcapStarRating ?? null,
+      ncap_adult_percent: ncap.NcapAdultPercent ?? null,
+      ncap_child_percent: ncap.NcapChildPercent ?? null,
+      ncap_pedestrian_percent: ncap.NcapPedestrianPercent ?? null,
+      ncap_safety_assist_percent: ncap.NcapSafetyAssistPercent ?? null
     },
 
-    // FUTURE IMAGE SUPPORT
+    weights: {
+      kerb_weight_kg: weights.KerbWeightKg ?? null,
+      gross_vehicle_weight_kg: weights.GrossVehicleWeightKg ?? null,
+      payload_kg: weights.PayloadWeightKg ?? null
+    },
+
+    emissions: {
+      euro_status: emissions.EuroStatus ?? null
+    },
+
+    dimensions: {
+      width_mm: dims.WidthMm ?? null,
+      height_mm: dims.HeightMm ?? null,
+      length_mm: dims.LengthMm ?? null,
+      wheelbase_mm: dims.WheelbaseLengthMm ?? null
+    },
+
+    performance: {
+      top_speed_kph: perf?.Statistics?.MaxSpeedKph ?? null,
+      top_speed_mph: perf?.Statistics?.MaxSpeedMph ?? null,
+      zero_to_60_mph: perf?.Statistics?.ZeroToSixtyMph ?? null,
+      zero_to_100_kph: perf?.Statistics?.ZeroToOneHundredKph ?? null
+    },
+
+    transmission: {
+      type: trans.TransmissionType ?? null,
+      drive: trans.DriveType ?? null,
+      gears: trans.NumberOfGears ?? null,
+      driving_axle: trans.DrivingAxle ?? null
+    },
+
     images: null
   };
 }
+
 
 
 // ------------------------------------------------------------
