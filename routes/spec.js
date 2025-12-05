@@ -146,17 +146,31 @@ function buildCleanSpec(apiResults) {
       seats: mBody.NumberOfSeats || null,
       axles: mBody.NumberOfAxles || null,
       fuel_tank_litres: mBody.FuelTankCapacityLitres || null,
-      driving_axle: trans.DrivingAxle || null
+      driving_axle:
+		trans.DrivingAxle ||
+		powertrain?.TransmissionDetailsList?.[0]?.DrivingAxle ||
+		null
     },
 
     // -------------------------
     // TRANSMISSION
     // -------------------------
     transmission: {
-      type: trans.TransmissionType || null,
-      gears: trans.NumberOfGears || null,
-      drive: trans.DriveType || null
-    },
+	  type:
+		trans.TransmissionType ||
+		powertrain?.TransmissionDetailsList?.[0]?.TransmissionType ||
+		null,
+
+	  gears:
+		trans.NumberOfGears ||
+		powertrain?.TransmissionDetailsList?.[0]?.NumberOfGears ||
+		null,
+
+	  drive:
+		trans.DriveType ||
+		powertrain?.TransmissionDetailsList?.[0]?.DriveType ||
+		null
+	},
 
     // -------------------------
     // EMISSIONS
