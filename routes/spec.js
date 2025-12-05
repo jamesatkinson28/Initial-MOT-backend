@@ -5,13 +5,10 @@ import axios from "axios";
 
 const router = express.Router();
 
-// ------------------------------------------------------------
-// FUTURE IMAGE SUPPORT (OFF FOR NOW — ENABLE LATER)
-// ------------------------------------------------------------
-const ENABLE_IMAGES = false; // 🔥 Turn to TRUE in future when 20p lookups are OK
+const ENABLE_IMAGES = false;
 
 // ------------------------------------------------------------
-// Reset premium unlocks monthly
+// RESET MONTHLY FREE UNLOCKS
 // ------------------------------------------------------------
 async function resetMonthlyIfNeeded(user_id) {
   const { rows } = await query(
@@ -43,56 +40,53 @@ async function resetMonthlyIfNeeded(user_id) {
 }
 
 // ------------------------------------------------------------
-// CLEAN SPEC BUILDER (EXTENDED VERSION)
-// ------------------------------------------------------------
-// ------------------------------------------------------------
-// CLEAN SPEC BUILDER (FULL EXTENDED VERSION)
-// Removes nulls, adds all requested fields including Country of Origin
-// ------------------------------------------------------------
-// ------------------------------------------------------------
-// CLEAN SPEC BUILDER (FULL STATIC VERSION + MPG + SOUND LEVELS)
+// REMOVE NULLS FROM OUTPUT
 // ------------------------------------------------------------
 function removeNulls(obj) {
   if (Array.isArray(obj)) return obj.map(removeNulls);
+
   if (obj !== null && typeof obj === "object") {
     const cleaned = {};
-    for (const [k, v] of Object.entries(obj)) {
-      if (v === null || v === undefined) continue;
-      cleaned[k] = removeNulls(v);
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== null && value !== undefined) {
+        cleaned[key] = removeNulls(value);
+      }
     }
     return cleaned;
   }
   return obj;
 }
 
+// ------------------------------------------------------------
+// CLEAN SPEC BUILDER (STATIC DATA ONLY)
+// Includes MPG, L/100km + Sound Levels
+// ------------------------------------------------------------
 function buildCleanSpec(apiResults) {
   const vd = apiResults?.VehicleDetails || {};
   const vId = vd.VehicleIdentification || {};
   const vTech = vd.DvlaTechnicalDetails || {};
   const vStatus = vd.VehicleStatus || {};
-  const vHist = vd.VehicleHistory || {};
 
   const model = apiResults?.ModelDetails || {};
   const mId = model.ModelIdentification || {};
   const dims = model.Dimensions || {};
   const weights = model.Weights || {};
   const body = model.BodyDetails || {};
+
   const performance = model.Performance || {};
   const power = performance?.Power || {};
   const torque = performance?.Torque || {};
   const stats = performance?.Statistics || {};
   const fuelEconomy = performance?.FuelEconomy || {};
+
   const emissions = model.Emissions || {};
-  const safety = model.Safety || {};
   const sound = emissions?.SoundLevels || {};
+  const safety = model.Safety || {};
+
   const powertrain = model.Powertrain || {};
   const ice = powertrain?.IceDetails || {};
 
   let clean = {
-
-    // ----------------------------------------------------
-    // VEHICLE IDENTITY
-    // ----------------------------------------------------
     identity: {
       vrm: vId.Vrm,
       make: mId.Make || vId.DvlaMake,
@@ -107,113 +101,86 @@ function buildCleanSpec(apiResults) {
       country_of_origin: mId.CountryOfOrigin
     },
 
-    // ----------------------------------------------------
-    // ENGINE STATIC SPECS
-    // ----------------------------------------------------
     engine: {
-      engine_cc: ice.EngineCapacityCc || vTech.EngineCapacityCc,
-      engine_litres: ice.EngineCapacityLitres,
-      aspiration: ice.Aspiration,
-      cylinder_arrangement: ice.CylinderArrangement,
-      cylinders: ice.NumberOfCylinders,
-      bore_mm: ice.BoreMm,
-      stroke_mm: ice.StrokeMm,
-      valves_per_cylinder: ice.ValvesPerCylinder,
-      valve_gear: ice.ValveGear,
+      engine_cc: ice?.EngineCapacityCc || vTech.EngineCapacityCc,
+      engine_litres: ice?.EngineCapacityLitres,
+      aspiration: ice?.Aspiration,
+      cylinder_arrangement: ice?.CylinderArrangement,
+      cylinders: ice?.NumberOfCylinders,
+      bore_mm: ice?.BoreMm,
+      stroke_mm: ice?.StrokeMm,
+      valves_per_cylinder: ice?.ValvesPerCylinder,
+      valve_gear: ice?.ValveGear,
       fuel_type: vId.DvlaFuelType || powertrain.FuelType,
-      engine_location: ice.EngineLocation,
-      engine_description: ice.EngineDescription
+      engine_location: ice?.EngineLocation,
+      engine_description: ice?.EngineDescription
     },
 
-    // ----------------------------------------------------
-    // PERFORMANCE (STATIC)
-    // ----------------------------------------------------
     performance: {
-      bhp: power.Bhp,
-      ps: power.Ps,
-      kw: power.Kw,
-      torque_nm: torque.Nm,
-      torque_lbft: torque.LbFt,
-      zero_to_60_mph: stats.ZeroToSixtyMph,
-      zero_to_100_kph: stats.ZeroToOneHundredKph,
-      top_speed_mph: stats.MaxSpeedMph,
-      top_speed_kph: stats.MaxSpeedKph
+      bhp: power?.Bhp,
+      ps: power?.Ps,
+      kw: power?.Kw,
+      torque_nm: torque?.Nm,
+      torque_lbft: torque?.LbFt,
+      zero_to_60_mph: stats?.ZeroToSixtyMph,
+      zero_to_100_kph: stats?.ZeroToOneHundredKph,
+      top_speed_mph: stats?.MaxSpeedMph,
+      top_speed_kph: stats?.MaxSpeedKph
     },
 
-    // ----------------------------------------------------
-    // FUEL ECONOMY (STATIC)
-    // ----------------------------------------------------
     fuel_economy: {
-      urban_mpg: fuelEconomy.UrbanColdMpg,
-      extra_urban_mpg: fuelEconomy.ExtraUrbanMpg,
-      combined_mpg: fuelEconomy.CombinedMpg,
-      urban_l_100km: fuelEconomy.UrbanColdL100Km,
-      extra_urban_l_100km: fuelEconomy.ExtraUrbanL100Km,
-      combined_l_100km: fuelEconomy.CombinedL100Km
+      urban_mpg: fuelEconomy?.UrbanColdMpg,
+      extra_urban_mpg: fuelEconomy?.ExtraUrbanMpg,
+      combined_mpg: fuelEconomy?.CombinedMpg,
+      urban_l_100km: fuelEconomy?.UrbanColdL100Km,
+      extra_urban_l_100km: fuelEconomy?.ExtraUrbanL100Km,
+      combined_l_100km: fuelEconomy?.CombinedL100Km
     },
 
-    // ----------------------------------------------------
-    // DIMENSIONS
-    // ----------------------------------------------------
     dimensions: {
-      height_mm: dims.HeightMm,
-      length_mm: dims.LengthMm,
-      width_mm: dims.WidthMm,
-      wheelbase_mm: dims.WheelbaseLengthMm
+      height_mm: dims?.HeightMm,
+      length_mm: dims?.LengthMm,
+      width_mm: dims?.WidthMm,
+      wheelbase_mm: dims?.WheelbaseLengthMm
     },
 
-    // ----------------------------------------------------
-    // WEIGHTS
-    // ----------------------------------------------------
     weights: {
-      kerb_weight_kg: weights.KerbWeightKg,
-      gross_vehicle_weight_kg: weights.GrossVehicleWeightKg,
-      mass_in_service_kg: vTech.MassInServiceKg
+      kerb_weight_kg: weights?.KerbWeightKg,
+      gross_vehicle_weight_kg: weights?.GrossVehicleWeightKg,
+      mass_in_service_kg: vTech?.MassInServiceKg
     },
 
-    // ----------------------------------------------------
-    // SAFETY / NCAP
-    // ----------------------------------------------------
     safety: {
       ncap_rating: safety?.EuroNcap?.NcapStarRating,
-      ncap_child_percent: safety?.EuroNcap?.NcapChildPercent,
       ncap_adult_percent: safety?.EuroNcap?.NcapAdultPercent,
+      ncap_child_percent: safety?.EuroNcap?.NcapChildPercent,
       ncap_pedestrian_percent: safety?.EuroNcap?.NcapPedestrianPercent,
       ncap_safety_assist_percent: safety?.EuroNcap?.NcapSafetyAssistPercent
     },
 
-    // ----------------------------------------------------
-    // EMISSIONS (STATIC) + SOUND LEVELS
-    // ----------------------------------------------------
     emissions: {
-      euro_status: emissions.EuroStatus,
-      co2_g_km: emissions.ManufacturerCo2,
+      euro_status: emissions?.EuroStatus,
+      co2_g_km: emissions?.ManufacturerCo2,
       sound_stationary_db: sound?.StationaryDb,
       sound_driveby_db: sound?.DriveByDb
-    }
+    },
+
+    images: null
   };
 
   return removeNulls(clean);
 }
 
-
-
 // ------------------------------------------------------------
-// FUTURE IMAGE FETCHING (DISABLED)
+// OPTIONAL IMAGE FETCHING (DISABLED)
 // ------------------------------------------------------------
 async function fetchImagesFromVDG(vrm) {
-  if (!ENABLE_IMAGES) return null; // Images turned off for now
-
-  // 🔥 In the future, VDG may expose image URLs here
-  // Placeholder for future support
-  return {
-    main: null,
-    angles: []
-  };
+  if (!ENABLE_IMAGES) return null;
+  return { main: null, angles: [] };
 }
 
 // ------------------------------------------------------------
-// FETCH VEHICLE DETAILS FROM VDG (SPEC ONLY FOR NOW)
+// FETCH SPEC FROM API
 // ------------------------------------------------------------
 async function fetchSpecDataFromAPI(vrm) {
   const url = `${process.env.SPEC_API_BASE_URL}/r2/lookup`;
@@ -228,20 +195,16 @@ async function fetchSpecDataFromAPI(vrm) {
 
   const data = response.data;
 
-  if (!data?.Results?.VehicleDetails) {
-    return null;
-  }
+  if (!data?.Results?.VehicleDetails) return null;
 
   const cleanSpec = buildCleanSpec(data.Results);
-
-  // Add future image support (currently null)
   cleanSpec.images = await fetchImagesFromVDG(vrm);
 
   return cleanSpec;
 }
 
 // ------------------------------------------------------------
-// UNLOCK SPEC ROUTE
+// UNLOCK SPEC ROUTE (CORRECTED VERSION)
 // ------------------------------------------------------------
 router.post("/unlock-spec", authRequired, async (req, res) => {
   try {
@@ -257,12 +220,18 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
       [vrmUpper]
     );
 
-    if (cached.rows.length > 0) {
+    // Check if already unlocked
+    const unlocked = await query(
+      `SELECT 1 FROM unlocked_specs WHERE user_id=$1 AND vrm=$2`,
+      [user_id, vrmUpper]
+    );
+
+    if (unlocked.rows.length > 0) {
       return res.json({
         success: true,
         price: 0,
         alreadyUnlocked: true,
-        spec: cached.rows[0].spec_json
+        spec: cached.rows.length > 0 ? cached.rows[0].spec_json : null
       });
     }
 
@@ -279,8 +248,8 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
       (!user.premium_until || new Date(user.premium_until) > new Date());
 
     let remaining = isPremium ? await resetMonthlyIfNeeded(user_id) : null;
-
     let price = 1.49;
+
     if (isPremium) {
       if (remaining > 0) {
         price = 0;
@@ -289,7 +258,7 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
           [user_id]
         );
       } else {
-        price = Number((1.49 * (1 - 0.25)).toFixed(2));
+        price = Number((1.49 * 0.75).toFixed(2)); // 25% discount
       }
     }
 
@@ -305,9 +274,11 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
       [vrmUpper, spec]
     );
 
-    // Mark unlocked
+    // Fix: Prevent duplicate unlock errors
     await query(
-      `INSERT INTO unlocked_specs (user_id, vrm) VALUES ($1, $2)`,
+      `INSERT INTO unlocked_specs (user_id, vrm)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id, vrm) DO NOTHING`,
       [user_id, vrmUpper]
     );
 
