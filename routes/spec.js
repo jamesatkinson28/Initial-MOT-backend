@@ -58,7 +58,11 @@ function normalizeSpec(raw, vrm) {
   const weights = model?.Weights || {};
   const perf = model?.Performance || {};
   const ice = model?.Powertrain?.IceDetails || {};
-  const trans = model?.Powertrain?.Transmission || {};
+  const trans =
+	model?.Powertrain?.Transmission ||
+	model?.Transmission ||
+	raw?.Results?.ModelDetails?.Transmission ||
+	{};
   const ncap = model?.Safety?.EuroNcap || {};
   const emissions = model?.Emissions || {};
 
@@ -134,11 +138,12 @@ function normalizeSpec(raw, vrm) {
     },
 
     transmission: {
-      type: trans.TransmissionType ?? null,
-      drive: trans.DriveType ?? null,
-      gears: trans.NumberOfGears ?? null,
-      driving_axle: trans.DrivingAxle ?? null
-    },
+	  type: trans.TransmissionType ?? null,
+	  drive: trans.DriveType ?? null,
+	  gears: trans.NumberOfGears ?? null,
+	  driving_axle: trans.DrivingAxle ?? null
+	},
+
 
     images: null
   };
