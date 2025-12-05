@@ -155,22 +155,25 @@ function buildCleanSpec(apiResults) {
     // -------------------------
     // TRANSMISSION
     // -------------------------
-    transmission: {
-	  type:
-		trans.TransmissionType ||
-		powertrain?.TransmissionDetailsList?.[0]?.TransmissionType ||
-		null,
+    const primaryTrans = raw?.Results?.ModelDetails?.Powertrain?.Transmission || {};
+	const evTrans = raw?.Results?.ModelDetails?.Powertrain?.TransmissionDetailsList?.[0] || {};
 
-	  gears:
-		trans.NumberOfGears ||
-		powertrain?.TransmissionDetailsList?.[0]?.NumberOfGears ||
+	transmission: {
+	  type:
+		primaryTrans.TransmissionType ||
+		evTrans.TransmissionType ||
 		null,
 
 	  drive:
-		trans.DriveType ||
-		powertrain?.TransmissionDetailsList?.[0]?.DriveType ||
+		primaryTrans.DriveType ||
+		evTrans.DriveType ||
+		null,
+
+	  gears:
+		primaryTrans.NumberOfGears ||
+		evTrans.NumberOfGears ||
 		null
-	},
+},
 
     // -------------------------
     // EMISSIONS
