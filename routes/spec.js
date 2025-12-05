@@ -106,7 +106,8 @@ function normalizeSpec(raw, vrm) {
 // -------------------------
 // 🔥 SPEC UNLOCK ENDPOINT
 // -------------------------
-router.post("/unlock", authMiddleware, async (req, res) => {
+router.post("/unlock", authRequired, async (req, res) => {
+
     try {
         const userId = req.user.id;
         const { vrm } = req.body;
