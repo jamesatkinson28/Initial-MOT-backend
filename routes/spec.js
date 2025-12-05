@@ -54,20 +54,28 @@ function buildCleanSpec(apiResults) {
 
   const model = apiResults?.ModelDetails || {};
   const mId = model.ModelIdentification || {};
+  const mBody = model.BodyDetails || {};
   const dims = model.Dimensions || {};
   const weights = model.Weights || {};
   const powertrain = model.Powertrain || {};
-  const ice = powertrain?.IceDetails || {};
+  const ice = powertrain.IceDetails || {};
   const perf = model.Performance || {};
   const emissions = model.Emissions || {};
   const safety = model.Safety || {};
+  const trans = model.Transmission || {};
 
   return {
     vrm: vId.Vrm || null,
+
+    // -------------------------
+    // BASIC VEHICLE INFO
+    // -------------------------
     make: mId.Make || vId.DvlaMake || "Unknown",
     model: mId.Range || vId.DvlaModel || "Unknown",
     variant: mId.ModelVariant || null,
+    mark: mId.Mark || null,
     year: vId.YearOfManufacture || null,
+    country_of_origin: mId.CountryOfOrigin || null,
 
     // -------------------------
     // ENGINE DETAILS
@@ -78,6 +86,7 @@ function buildCleanSpec(apiResults) {
       cylinders: ice.NumberOfCylinders || null,
       aspiration: ice.Aspiration || null,
       fuel_type: vId.DvlaFuelType || powertrain.FuelType || null,
+
       power_bhp: perf?.Power?.Bhp || null,
       power_kw: perf?.Power?.Kw || null,
       torque_nm: perf?.Torque?.Nm || null,
@@ -119,7 +128,7 @@ function buildCleanSpec(apiResults) {
     },
 
     // -------------------------
-    // DVLA INFO
+    // DVLA DATA
     // -------------------------
     dvla: {
       body_type: vId.DvlaBodyType || null,
@@ -130,23 +139,23 @@ function buildCleanSpec(apiResults) {
     },
 
     // -------------------------
-    // BODY / CHASSIS
+    // BODY DETAILS
     // -------------------------
     body: {
-      doors: mId.NumberOfDoors || null,
-      seats: mId.NumberOfSeats || null,
-      axles: mId.NumberOfAxles || null,
-      fuel_tank_litres: mId.FuelTankCapacityLitres || null,
-      driving_axle: model?.Transmission?.DrivingAxle || null
+      doors: mBody.NumberOfDoors || null,
+      seats: mBody.NumberOfSeats || null,
+      axles: mBody.NumberOfAxles || null,
+      fuel_tank_litres: mBody.FuelTankCapacityLitres || null,
+      driving_axle: trans.DrivingAxle || null
     },
 
     // -------------------------
     // TRANSMISSION
     // -------------------------
     transmission: {
-      type: model?.Transmission?.TransmissionType || null,
-      gears: model?.Transmission?.NumberOfGears || null,
-      drive: model?.Transmission?.DriveType || null
+      type: trans.TransmissionType || null,
+      gears: trans.NumberOfGears || null,
+      drive: trans.DriveType || null
     },
 
     // -------------------------
@@ -157,7 +166,7 @@ function buildCleanSpec(apiResults) {
     },
 
     // -------------------------
-    // SAFETY (NCAP)
+    // SAFETY
     // -------------------------
     safety: {
       ncap_star_rating: safety?.EuroNcap?.NcapStarRating || null,
@@ -167,12 +176,11 @@ function buildCleanSpec(apiResults) {
       ncap_safety_assist_percent: safety?.EuroNcap?.NcapSafetyAssistPercent || null
     },
 
-    // ---------------------------------------------------
-    // IMAGE SUPPORT (NULL FOR NOW, ENABLED IN FUTURE)
-    // ---------------------------------------------------
+    // FUTURE IMAGE SUPPORT
     images: null
   };
 }
+
 
 // ------------------------------------------------------------
 // FUTURE IMAGE FETCHING (DISABLED)
