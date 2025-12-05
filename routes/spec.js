@@ -1,304 +1,253 @@
 import express from "express";
-import { authRequired } from "../middleware/auth.js";
-import { query } from "../db/db.js";
-import axios from "axios";
+import fetch from "node-fetch";
+import db from "../db/db.js";
+import { authenticateToken } from "../middleware/authMiddleware.js";
+
+import fetchSpecFromVDG from "../utils/fetchSpec.js";
+import normalizeSpec from "../utils/normalizeSpec.js";
+
 
 const router = express.Router();
 
-// ------------------------------------------------------------
-// FUTURE IMAGE SUPPORT (OFF FOR NOW — ENABLE LATER)
-// ------------------------------------------------------------
-const ENABLE_IMAGES = false; // 🔥 Turn to TRUE in future when 20p lookups are OK
+const VDG_API_KEY = process.env.VDG_API_KEY;
+const VDG_PACKAGE = process.env.VDG_PACKAGE;
+const VDG_BASE_URL = process.env.VDG_BASE_URL || "https://uk.api.vehicledataglobal.com";
 
-// ------------------------------------------------------------
-// Reset premium unlocks monthly
-// ------------------------------------------------------------
-async function resetMonthlyIfNeeded(user_id) {
-  const { rows } = await query(
-    `SELECT monthly_unlocks_remaining, last_unlock_reset 
-     FROM users WHERE id=$1`,
-    [user_id]
-  );
 
-  const user = rows[0];
-  const now = new Date();
-  const lastReset = new Date(user.last_unlock_reset);
+// ----------------------------
+// Normalize VDG Raw Response
+// ----------------------------
+function normalizeSpec(raw, vrm) {
+    const vehicle = raw?.Results?.VehicleDetails;
+    const model = raw?.Results?.ModelDetails;
 
-  const isNewMonth =
-    now.getMonth() !== lastReset.getMonth() ||
-    now.getFullYear() !== lastReset.getFullYear();
+    return {
+        vrm,
+        make: model?.ModelIdentification?.Make || vehicle?.VehicleIdentification?.DvlaMake || null,
+        model: model?.ModelIdentification?.Range || vehicle?.VehicleIdentification?.DvlaModel || null,
+        variant: model?.ModelIdentification?.ModelVariant || null,
+        year: vehicle?.VehicleIdentification?.YearOfManufacture || null,
 
-  if (isNewMonth) {
-    await query(
-      `UPDATE users
-       SET monthly_unlocks_remaining = 3,
-           last_unlock_reset = NOW()
-       WHERE id=$1`,
-      [user_id]
-    );
-    return 3;
-  }
+        // NEW FIELDS
+        country_of_origin: model?.ModelIdentification?.CountryOfOrigin || null,
+        generation_mark: model?.ModelIdentification?.Mark || null,
 
-  return user.monthly_unlocks_remaining;
+        dvla: {
+            body_type: vehicle?.VehicleIdentification?.DvlaBodyType || null,
+            fuel_type: vehicle?.VehicleIdentification?.DvlaFuelType || null,
+            co2: vehicle?.VehicleStatus?.VehicleExciseDutyDetails?.DvlaCo2 || null,
+            tax_band: vehicle?.VehicleStatus?.VehicleExciseDutyDetails?.DvlaBand || null,
+            original_colour: raw?.Results?.VehicleHistory?.ColourDetails?.OriginalColour || null,
+        },
+
+        engine: {
+            capacity_cc: model?.Powertrain?.IceDetails?.EngineCapacityCc || null,
+            capacity_litres: model?.Powertrain?.IceDetails?.EngineCapacityLitres || null,
+            cylinders: model?.Powertrain?.IceDetails?.NumberOfCylinders || null,
+            cylinder_arrangement: model?.Powertrain?.IceDetails?.CylinderArrangement || null,
+            aspiration: model?.Powertrain?.IceDetails?.Aspiration || null,
+            valve_gear: model?.Powertrain?.IceDetails?.ValveGear || null,
+            valves_per_cylinder: model?.Powertrain?.IceDetails?.ValvesPerCylinder || null,
+            bore_mm: model?.Powertrain?.IceDetails?.BoreMm || null,
+            stroke_mm: model?.Powertrain?.IceDetails?.StrokeMm || null,
+            fuel_type: model?.Powertrain?.FuelType || null,
+            power_kw: model?.Performance?.Power?.Kw || null,
+            power_bhp: model?.Performance?.Power?.Bhp || null,
+            torque_nm: model?.Performance?.Torque?.Nm || null
+        },
+
+        body: {
+            doors: model?.BodyDetails?.NumberOfDoors || null,
+            seats: model?.BodyDetails?.NumberOfSeats || null,
+            axles: model?.BodyDetails?.NumberOfAxles || null,
+            wheelbase_mm: model?.Dimensions?.WheelbaseLengthMm || null,
+            fuel_tank_litres: model?.BodyDetails?.FuelTankCapacityLitres || null,
+            driving_axle: model?.Transmission?.DrivingAxle || null
+        },
+
+        dimensions: {
+            length_mm: model?.Dimensions?.LengthMm || null,
+            width_mm: model?.Dimensions?.WidthMm || null,
+            height_mm: model?.Dimensions?.HeightMm || null,
+            wheelbase_mm: model?.Dimensions?.WheelbaseLengthMm || null,
+        },
+
+        weights: {
+            kerb_weight_kg: model?.Weights?.KerbWeightKg || null,
+            gross_vehicle_weight_kg: model?.Weights?.GrossVehicleWeightKg || null,
+            payload_kg: model?.Weights?.PayloadWeightKg || null
+        },
+
+        emissions: {
+            euro_status: model?.Emissions?.EuroStatus || null,
+        },
+
+        performance: {
+            top_speed_kph: model?.Performance?.Statistics?.MaxSpeedKph || null,
+            top_speed_mph: model?.Performance?.Statistics?.MaxSpeedMph || null,
+            zero_to_60_mph: model?.Performance?.Statistics?.ZeroToSixtyMph || null,
+            zero_to_100_kph: model?.Performance?.Statistics?.ZeroToOneHundredKph || null,
+        },
+
+        safety: {
+            ncap_star_rating: model?.Safety?.EuroNcap?.NcapStarRating || null,
+            ncap_adult_percent: model?.Safety?.EuroNcap?.NcapAdultPercent || null,
+            ncap_child_percent: model?.Safety?.EuroNcap?.NcapChildPercent || null,
+            ncap_pedestrian_percent: model?.Safety?.EuroNcap?.NcapPedestrianPercent || null,
+            ncap_safety_assist_percent: model?.Safety?.EuroNcap?.NcapSafetyAssistPercent || null,
+        },
+
+        transmission: {
+            type: model?.Transmission?.TransmissionType || null,
+            gears: model?.Transmission?.NumberOfGears || null,
+            drive: model?.Transmission?.DriveType || null
+        },
+
+        images: null // reserved for future upgrade
+    };
 }
 
-// ------------------------------------------------------------
-// CLEAN SPEC BUILDER (EXTENDED VERSION)
-// ------------------------------------------------------------
-function buildCleanSpec(apiResults) {
-  const vd = apiResults?.VehicleDetails || {};
-  const vId = vd.VehicleIdentification || {};
-  const vTech = vd.DvlaTechnicalDetails || {};
-  const vStatus = vd.VehicleStatus || {};
-  const vHist = vd.VehicleHistory || {};
 
-  const model = apiResults?.ModelDetails || {};
-  const mId = model.ModelIdentification || {};
-  const dims = model.Dimensions || {};
-  const weights = model.Weights || {};
-  const powertrain = model.Powertrain || {};
-  const ice = powertrain?.IceDetails || {};
-  const perf = model.Performance || {};
-  const emissions = model.Emissions || {};
-  const safety = model.Safety || {};
 
-  return {
-    vrm: vId.Vrm || null,
-    make: mId.Make || vId.DvlaMake || "Unknown",
-    model: mId.Range || vId.DvlaModel || "Unknown",
-    variant: mId.ModelVariant || null,
-    year: vId.YearOfManufacture || null,
+// ----------------------------
+// Fetch from VDG
+// ----------------------------
+async function fetchSpecFromVDG(vrm) {
+    const url = `${VDG_BASE_URL}/r2/lookup?ApiKey=${VDG_API_KEY}&PackageName=${VDG_PACKAGE}&Vrm=${vrm}`;
 
-    // -------------------------
-    // ENGINE DETAILS
-    // -------------------------
-    engine: {
-      capacity_cc: ice.EngineCapacityCc || vTech.EngineCapacityCc || null,
-      capacity_litres: ice.EngineCapacityLitres || null,
-      cylinders: ice.NumberOfCylinders || null,
-      aspiration: ice.Aspiration || null,
-      fuel_type: vId.DvlaFuelType || powertrain.FuelType || null,
-      power_bhp: perf?.Power?.Bhp || null,
-      power_kw: perf?.Power?.Kw || null,
-      torque_nm: perf?.Torque?.Nm || null,
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("VDG API error");
 
-      bore_mm: ice.BoreMm || null,
-      stroke_mm: ice.StrokeMm || null,
-      valve_gear: ice.ValveGear || null,
-      valves_per_cylinder: ice.ValvesPerCylinder || null,
-      cylinder_arrangement: ice.CylinderArrangement || null
-    },
-
-    // -------------------------
-    // PERFORMANCE
-    // -------------------------
-    performance: {
-      zero_to_60_mph: perf?.Statistics?.ZeroToSixtyMph || null,
-      zero_to_100_kph: perf?.Statistics?.ZeroToOneHundredKph || null,
-      top_speed_mph: perf?.Statistics?.MaxSpeedMph || null,
-      top_speed_kph: perf?.Statistics?.MaxSpeedKph || null
-    },
-
-    // -------------------------
-    // DIMENSIONS
-    // -------------------------
-    dimensions: {
-      height_mm: dims.HeightMm || null,
-      length_mm: dims.LengthMm || null,
-      width_mm: dims.WidthMm || null,
-      wheelbase_mm: dims.WheelbaseLengthMm || null
-    },
-
-    // -------------------------
-    // WEIGHTS
-    // -------------------------
-    weights: {
-      kerb_weight_kg: weights.KerbWeightKg || null,
-      gross_vehicle_weight_kg: weights.GrossVehicleWeightKg || null,
-      payload_kg: weights.PayloadWeightKg || null
-    },
-
-    // -------------------------
-    // DVLA INFO
-    // -------------------------
-    dvla: {
-      body_type: vId.DvlaBodyType || null,
-      fuel_type: vId.DvlaFuelType || null,
-      co2: vStatus?.VehicleExciseDutyDetails?.DvlaCo2 || emissions.ManufacturerCo2 || null,
-      tax_band: vStatus?.VehicleExciseDutyDetails?.DvlaCo2Band || null,
-      original_colour: vHist?.ColourDetails?.OriginalColour || null
-    },
-
-    // -------------------------
-    // BODY / CHASSIS
-    // -------------------------
-    body: {
-      doors: mId.NumberOfDoors || null,
-      seats: mId.NumberOfSeats || null,
-      axles: mId.NumberOfAxles || null,
-      fuel_tank_litres: mId.FuelTankCapacityLitres || null,
-      driving_axle: model?.Transmission?.DrivingAxle || null
-    },
-
-    // -------------------------
-    // TRANSMISSION
-    // -------------------------
-    transmission: {
-      type: model?.Transmission?.TransmissionType || null,
-      gears: model?.Transmission?.NumberOfGears || null,
-      drive: model?.Transmission?.DriveType || null
-    },
-
-    // -------------------------
-    // EMISSIONS
-    // -------------------------
-    emissions: {
-      euro_status: emissions.EuroStatus || null
-    },
-
-    // -------------------------
-    // SAFETY (NCAP)
-    // -------------------------
-    safety: {
-      ncap_star_rating: safety?.EuroNcap?.NcapStarRating || null,
-      ncap_adult_percent: safety?.EuroNcap?.NcapAdultPercent || null,
-      ncap_child_percent: safety?.EuroNcap?.NcapChildPercent || null,
-      ncap_pedestrian_percent: safety?.EuroNcap?.NcapPedestrianPercent || null,
-      ncap_safety_assist_percent: safety?.EuroNcap?.NcapSafetyAssistPercent || null
-    },
-
-    // ---------------------------------------------------
-    // IMAGE SUPPORT (NULL FOR NOW, ENABLED IN FUTURE)
-    // ---------------------------------------------------
-    images: null
-  };
+    const data = await res.json();
+    return data;
 }
 
-// ------------------------------------------------------------
-// FUTURE IMAGE FETCHING (DISABLED)
-// ------------------------------------------------------------
-async function fetchImagesFromVDG(vrm) {
-  if (!ENABLE_IMAGES) return null; // Images turned off for now
 
-  // 🔥 In the future, VDG may expose image URLs here
-  // Placeholder for future support
-  return {
-    main: null,
-    angles: []
-  };
-}
+// ----------------------------
+// Unlock Spec Endpoint
+// ----------------------------
+router.post("/unlock-spec", authenticateToken, async (req, res) => {
+    const client = await db.connect();
 
-// ------------------------------------------------------------
-// FETCH VEHICLE DETAILS FROM VDG (SPEC ONLY FOR NOW)
-// ------------------------------------------------------------
-async function fetchSpecDataFromAPI(vrm) {
-  const url = `${process.env.SPEC_API_BASE_URL}/r2/lookup`;
+    try {
+        const { vrm } = req.body;
+        if (!vrm) return res.status(400).json({ error: "VRM required" });
 
-  const response = await axios.get(url, {
-    params: {
-      ApiKey: process.env.SPEC_API_KEY,
-      PackageName: "VehicleDetails",
-      Vrm: vrm
-    }
-  });
+        const userId = req.user.id;
 
-  const data = response.data;
+        await client.query("BEGIN");
 
-  if (!data?.Results?.VehicleDetails) {
-    return null;
-  }
-
-  const cleanSpec = buildCleanSpec(data.Results);
-
-  // Add future image support (currently null)
-  cleanSpec.images = await fetchImagesFromVDG(vrm);
-
-  return cleanSpec;
-}
-
-// ------------------------------------------------------------
-// UNLOCK SPEC ROUTE
-// ------------------------------------------------------------
-router.post("/unlock-spec", authRequired, async (req, res) => {
-  try {
-    const { vrm } = req.body;
-    if (!vrm) return res.status(400).json({ error: "VRM required" });
-
-    const vrmUpper = vrm.toUpperCase();
-    const user_id = req.user.id;
-
-    // Check cache
-    const cached = await query(
-      `SELECT spec_json FROM vehicle_specs WHERE vrm=$1`,
-      [vrmUpper]
-    );
-
-    if (cached.rows.length > 0) {
-      return res.json({
-        success: true,
-        price: 0,
-        alreadyUnlocked: true,
-        spec: cached.rows[0].spec_json
-      });
-    }
-
-    // Premium logic
-    const userRow = await query(
-      `SELECT premium, premium_until, monthly_unlocks_remaining 
-       FROM users WHERE id=$1`,
-      [user_id]
-    );
-
-    const user = userRow.rows[0];
-    const isPremium =
-      user.premium &&
-      (!user.premium_until || new Date(user.premium_until) > new Date());
-
-    let remaining = isPremium ? await resetMonthlyIfNeeded(user_id) : null;
-
-    let price = 1.49;
-    if (isPremium) {
-      if (remaining > 0) {
-        price = 0;
-        await query(
-          `UPDATE users SET monthly_unlocks_remaining = monthly_unlocks_remaining - 1 WHERE id=$1`,
-          [user_id]
+        // 1. Load user data
+        const userRes = await client.query(
+            "SELECT premium, premium_until, monthly_unlocks_remaining, last_unlock_reset FROM users WHERE id = $1",
+            [userId]
         );
-      } else {
-        price = Number((1.49 * (1 - 0.25)).toFixed(2));
-      }
+        const user = userRes.rows[0];
+
+        const now = new Date();
+        const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        // 2. Reset premium unlock counter at the start of each month
+        if (user.premium && new Date(user.last_unlock_reset) < firstOfMonth) {
+            await client.query(
+                "UPDATE users SET monthly_unlocks_remaining = 3, last_unlock_reset = $2 WHERE id = $1",
+                [userId, firstOfMonth]
+            );
+            user.monthly_unlocks_remaining = 3;
+            user.last_unlock_reset = firstOfMonth;
+        }
+
+        const isPremiumActive = user.premium && new Date(user.premium_until) > now;
+
+        // 3. Check if already unlocked
+        const unlocked = await client.query(
+            "SELECT * FROM unlocked_specs WHERE user_id = $1 AND vrm = $2",
+            [userId, vrm]
+        );
+
+        if (unlocked.rows.length > 0) {
+            // Return cached spec immediately
+            const cached = await client.query(
+                "SELECT spec_json FROM vehicle_specs WHERE vrm = $1",
+                [vrm]
+            );
+
+            await client.query("COMMIT");
+
+            return res.json({
+                success: true,
+                unlocked: true,
+                cost: 0,
+                message: "Already unlocked",
+                spec: cached.rows[0]?.spec_json || null
+            });
+        }
+
+        // 4. Pricing logic
+        let cost = 1.49;
+        let usedFreeUnlock = false;
+
+        if (isPremiumActive && user.monthly_unlocks_remaining > 0) {
+            // Free monthly unlock
+            cost = 0;
+            usedFreeUnlock = true;
+        } else if (isPremiumActive) {
+            // Premium discount (25% off)
+            cost = parseFloat((1.49 * 0.75).toFixed(2)); // £1.12
+        } else {
+            // Free user
+            cost = 1.49;
+        }
+
+        // If free unlock used, deduct
+        if (usedFreeUnlock) {
+            await client.query(
+                "UPDATE users SET monthly_unlocks_remaining = monthly_unlocks_remaining - 1 WHERE id = $1",
+                [userId]
+            );
+        }
+
+        // 5. Fetch live data from VDG
+        const raw = await fetchSpecFromVDG(vrm);
+        const clean = normalizeSpec(raw);
+
+        if (!clean) throw new Error("Failed to normalize vehicle spec");
+
+        // 6. Store spec
+        await client.query(
+            `INSERT INTO vehicle_specs (vrm, spec_json)
+             VALUES ($1, $2)
+             ON CONFLICT (vrm)
+             DO UPDATE SET spec_json = $2, updated_at = NOW()`,
+            [vrm, clean]
+        );
+
+        // 7. Mark VRM as unlocked permanently
+        await client.query(
+            "INSERT INTO unlocked_specs (user_id, vrm) VALUES ($1, $2)",
+            [userId, vrm]
+        );
+
+        await client.query("COMMIT");
+
+        return res.json({
+            success: true,
+            unlocked: false,
+            cost,
+            usedFreeUnlock,
+            isPremium: isPremiumActive,
+            remainingFreeUnlocks: isPremiumActive ? user.monthly_unlocks_remaining - (usedFreeUnlock ? 1 : 0) : 0,
+            spec: clean
+        });
+
+    } catch (err) {
+        await client.query("ROLLBACK");
+        console.error("Unlock spec error:", err);
+        return res.status(500).json({ error: "Internal server error" });
+    } finally {
+        client.release();
     }
-
-    // Fetch fresh spec
-    const spec = await fetchSpecDataFromAPI(vrmUpper);
-    if (!spec) return res.status(404).json({ error: "Vehicle spec not found" });
-
-    // Cache it
-    await query(
-      `INSERT INTO vehicle_specs (vrm, spec_json)
-       VALUES ($1, $2)
-       ON CONFLICT (vrm) DO UPDATE SET spec_json=$2, updated_at=NOW()`,
-      [vrmUpper, spec]
-    );
-
-    // Mark unlocked
-    await query(
-      `INSERT INTO unlocked_specs (user_id, vrm) VALUES ($1, $2)`,
-      [user_id, vrmUpper]
-    );
-
-    return res.json({
-      success: true,
-      price,
-      isPremium,
-      remainingFreeUnlocks: isPremium ? remaining - (price === 0 ? 1 : 0) : null,
-      spec
-    });
-
-  } catch (err) {
-    console.error("UNLOCK SPEC ERROR:", err);
-    res.status(500).json({ error: "Failed to unlock spec" });
-  }
 });
+
 
 export default router;
