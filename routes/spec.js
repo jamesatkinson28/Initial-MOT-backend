@@ -1,7 +1,8 @@
 import express from "express";
 import fetch from "node-fetch";
 import db from "../db/db.js";
-import { authenticateToken } from "../middleware/authMiddleware.js";
+import { authMiddleware } from "../middleware/auth.js";
+
 
 const router = express.Router();
 
