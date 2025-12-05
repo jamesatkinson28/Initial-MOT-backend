@@ -49,15 +49,16 @@ async function resetMonthlyIfNeeded(user_id) {
 // CLEAN SPEC BUILDER (FULL EXTENDED VERSION)
 // Removes nulls, adds all requested fields including Country of Origin
 // ------------------------------------------------------------
+// ------------------------------------------------------------
+// CLEAN SPEC BUILDER (FULL STATIC VERSION + MPG + SOUND LEVELS)
+// ------------------------------------------------------------
 function removeNulls(obj) {
-  if (Array.isArray(obj)) {
-    return obj.map(removeNulls);
-  }
+  if (Array.isArray(obj)) return obj.map(removeNulls);
   if (obj !== null && typeof obj === "object") {
     const cleaned = {};
-    for (const [key, value] of Object.entries(obj)) {
-      if (value === null || value === undefined) continue;
-      cleaned[key] = removeNulls(value);
+    for (const [k, v] of Object.entries(obj)) {
+      if (v === null || v === undefined) continue;
+      cleaned[k] = removeNulls(v);
     }
     return cleaned;
   }
@@ -76,11 +77,16 @@ function buildCleanSpec(apiResults) {
   const dims = model.Dimensions || {};
   const weights = model.Weights || {};
   const body = model.BodyDetails || {};
-  const powertrain = model.Powertrain || {};
-  const ice = powertrain?.IceDetails || {};
-  const perf = model.Performance || {};
+  const performance = model.Performance || {};
+  const power = performance?.Power || {};
+  const torque = performance?.Torque || {};
+  const stats = performance?.Statistics || {};
+  const fuelEconomy = performance?.FuelEconomy || {};
   const emissions = model.Emissions || {};
   const safety = model.Safety || {};
+  const sound = emissions?.SoundLevels || {};
+  const powertrain = model.Powertrain || {};
+  const ice = powertrain?.IceDetails || {};
 
   let clean = {
 
@@ -94,11 +100,11 @@ function buildCleanSpec(apiResults) {
       variant: mId.ModelVariant,
       year_of_manufacture: vId.YearOfManufacture,
       body_style: body.BodyStyle,
-      number_of_doors: body.NumberOfDoors || mId.NumberOfDoors,
-      seats: body.NumberOfSeats || mId.NumberOfSeats,
+      number_of_doors: body.NumberOfDoors,
+      seats: body.NumberOfSeats,
       wheelbase: body.WheelbaseType,
       axles: body.NumberOfAxles,
-      country_of_origin: mId.CountryOfOrigin // <-- NEW (Confirmed in sample PDF)
+      country_of_origin: mId.CountryOfOrigin
     },
 
     // ----------------------------------------------------
@@ -120,18 +126,30 @@ function buildCleanSpec(apiResults) {
     },
 
     // ----------------------------------------------------
-    // PERFORMANCE (MANUFACTURER FIGURES)
+    // PERFORMANCE (STATIC)
     // ----------------------------------------------------
     performance: {
-      bhp: perf?.Power?.Bhp,
-      ps: perf?.Power?.Ps,
-      kw: perf?.Power?.Kw,
-      torque_nm: perf?.Torque?.Nm,
-      torque_lbft: perf?.Torque?.LbFt,
-      zero_to_60_mph: perf?.Statistics?.ZeroToSixtyMph,
-      zero_to_100_kph: perf?.Statistics?.ZeroToOneHundredKph,
-      top_speed_mph: perf?.Statistics?.MaxSpeedMph,
-      top_speed_kph: perf?.Statistics?.MaxSpeedKph
+      bhp: power.Bhp,
+      ps: power.Ps,
+      kw: power.Kw,
+      torque_nm: torque.Nm,
+      torque_lbft: torque.LbFt,
+      zero_to_60_mph: stats.ZeroToSixtyMph,
+      zero_to_100_kph: stats.ZeroToOneHundredKph,
+      top_speed_mph: stats.MaxSpeedMph,
+      top_speed_kph: stats.MaxSpeedKph
+    },
+
+    // ----------------------------------------------------
+    // FUEL ECONOMY (STATIC)
+    // ----------------------------------------------------
+    fuel_economy: {
+      urban_mpg: fuelEconomy.UrbanColdMpg,
+      extra_urban_mpg: fuelEconomy.ExtraUrbanMpg,
+      combined_mpg: fuelEconomy.CombinedMpg,
+      urban_l_100km: fuelEconomy.UrbanColdL100Km,
+      extra_urban_l_100km: fuelEconomy.ExtraUrbanL100Km,
+      combined_l_100km: fuelEconomy.CombinedL100Km
     },
 
     // ----------------------------------------------------
@@ -165,16 +183,19 @@ function buildCleanSpec(apiResults) {
     },
 
     // ----------------------------------------------------
-    // EMISSIONS (TYPE APPROVAL)
+    // EMISSIONS (STATIC) + SOUND LEVELS
     // ----------------------------------------------------
     emissions: {
       euro_status: emissions.EuroStatus,
-      co2_g_km: emissions.ManufacturerCo2 || vStatus?.VehicleExciseDutyDetails?.DvlaCo2
+      co2_g_km: emissions.ManufacturerCo2,
+      sound_stationary_db: sound?.StationaryDb,
+      sound_driveby_db: sound?.DriveByDb
     }
   };
 
   return removeNulls(clean);
 }
+
 
 
 // ------------------------------------------------------------
