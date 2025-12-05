@@ -221,19 +221,40 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
     );
 
     // Check if already unlocked
-    const unlocked = await query(
-      `SELECT 1 FROM unlocked_specs WHERE user_id=$1 AND vrm=$2`,
-      [user_id, vrmUpper]
-    );
+	const unlocked = await query(
+	  `SELECT 1 FROM unlocked_specs WHERE user_id=$1 AND vrm=$2`,
+	  [user_id, vrmUpper]
+	);
 
-    if (unlocked.rows.length > 0) {
-      return res.json({
-        success: true,
-        price: 0,
-        alreadyUnlocked: true,
-        spec: cached.rows.length > 0 ? cached.rows[0].spec_json : null
-      });
-    }
+	if (unlocked.rows.length > 0) {
+	  let specData = null;
+
+	// Try load cached spec
+	  if (cached.rows.length > 0) {
+		specData = cached.rows[0].spec_json;
+	  } else {
+		// Fetch fresh spec if not in cache
+		specData = await fetchSpecDataFromAPI(vrmUpper);
+
+		// Store it for future use
+		  if (specData) {
+			await query(
+			  `INSERT INTO vehicle_specs (vrm, spec_json)
+			  VALUES ($1, $2)
+			  ON CONFLICT (vrm) DO UPDATE SET spec_json=$2, updated_at=NOW()`,
+			  [vrmUpper, specData]
+			);
+		  }
+		}
+
+		return res.json({
+		  success: true,
+		  price: 0,
+		  alreadyUnlocked: true,
+		  spec: specData
+		});
+	  }
+
 
     // Premium logic
     const userRow = await query(
