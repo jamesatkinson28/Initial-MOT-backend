@@ -173,7 +173,7 @@ function buildCleanSpec(apiResults) {
 		primaryTrans.NumberOfGears ||
 		evTrans.NumberOfGears ||
 		null
-},
+    },
 
     // -------------------------
     // EMISSIONS
