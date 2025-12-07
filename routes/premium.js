@@ -1,7 +1,7 @@
 // routes/premium.js
 import express from "express";
 import Stripe from "stripe";
-import authMiddleware from "../middleware/auth.js";
+import { authMiddleware } from "../middleware/auth.js";
 import { query } from "../db/db.js";
 
 const router = express.Router();

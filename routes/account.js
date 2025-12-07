@@ -1,6 +1,6 @@
 // routes/account.js
 import express from "express";
-import authMiddleware from "../middleware/auth.js";
+import { authMiddleware } from "../middleware/auth.js";
 import { query } from "../db/db.js";
 
 const router = express.Router();
