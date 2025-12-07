@@ -2,7 +2,7 @@
 import express from "express";
 import Stripe from "stripe";
 import authMiddleware from "../middleware/auth.js";
-import { query } from "../db.js";
+import { query } from "../db/db.js";
 
 const router = express.Router();
 
