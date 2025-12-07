@@ -8,7 +8,15 @@ import { query } from "./db/db.js";
 
 dotenv.config();
 
-// Routers
+// 🎉 CREATE APP FIRST
+const app = express();
+
+// 🎉 CREATE STRIPE ONCE
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: "2024-06-20",
+});
+
+// Import routes AFTER stripe + app
 import authRouter from "./routes/auth.js";
 import garageRouter from "./routes/garage.js";
 import specRouter from "./routes/spec.js";
@@ -16,12 +24,7 @@ import passwordResetRoutes from "./routes/passwordReset.js";
 import premiumRoutes from "./routes/premium.js";
 import accountRoutes from "./routes/account.js";
 
-// Stripe init
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2024-06-20",
-});
-
-// Stripe webhook must use raw body
+// 🎉 STRIPE WEBHOOK — MUST COME BEFORE express.json()
 app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
@@ -36,7 +39,7 @@ app.post(
         process.env.STRIPE_WEBHOOK_SECRET
       );
     } catch (err) {
-      console.error("[Stripe] Webhook signature error:", err.message);
+      console.error("[Stripe] Bad webhook signature:", err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
@@ -46,32 +49,28 @@ app.post(
           const session = event.data.object;
           const userId = session.metadata?.userId;
 
-          if (!userId) break;
-
-          // Get subscription info so we can set premium_until
           const subscriptionId = session.subscription;
           const subscription =
             typeof subscriptionId === "string"
               ? await stripe.subscriptions.retrieve(subscriptionId)
               : null;
 
-          const currentPeriodEnd = subscription?.current_period_end
+          const expiry = subscription?.current_period_end
             ? new Date(subscription.current_period_end * 1000)
             : null;
 
           await query(
             `
-            UPDATE users
-            SET premium = true,
-                premium_until = $2,
-                monthly_unlocks_remaining = 3,
-                last_unlock_reset = NOW()
-            WHERE id = $1
-          `,
-            [userId, currentPeriodEnd]
+              UPDATE users
+              SET premium = true,
+                  premium_until = $2,
+                  monthly_unlocks_remaining = 3,
+                  last_unlock_reset = NOW()
+              WHERE id = $1
+            `,
+            [userId, expiry]
           );
 
-          console.log("[Stripe] User upgraded to premium:", userId);
           break;
         }
 
@@ -79,32 +78,25 @@ app.post(
         case "customer.subscription.cancelled": {
           const sub = event.data.object;
           const userId = sub.metadata?.userId;
-          if (!userId) break;
 
           await query(
-            `
-            UPDATE users
-            SET premium = false
-            WHERE id = $1
-          `,
+            `UPDATE users SET premium = false WHERE id = $1`,
             [userId]
           );
-          console.log("[Stripe] Subscription cancelled for user:", userId);
+
           break;
         }
-
-        default:
-          // other events ignored for now
-          break;
       }
 
       res.json({ received: true });
     } catch (err) {
-      console.error("[Stripe] Webhook handler error:", err);
-      res.status(500).send("Webhook handler failed");
+      console.error("[Webhook Error]", err);
+      res.status(500).send("Webhook handler crashed");
     }
   }
 );
+
+// 🎉 STOP PASTING HERE — DO NOT MOVE ANYTHING BELOW THIS LINE
 
 // 2) Normal JSON parsing for the rest of the app
 app.use(express.json());
