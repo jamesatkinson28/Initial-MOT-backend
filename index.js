@@ -3,6 +3,8 @@ import axios from "axios";
 import qs from "qs";
 import dotenv from "dotenv";
 import cors from "cors";
+import Stripe from "stripe";
+import { query } from "./db/db.js";
 
 dotenv.config();
 
@@ -14,15 +16,10 @@ import passwordResetRoutes from "./routes/passwordReset.js";
 import premiumRoutes from "./routes/premium.js";
 import accountRoutes from "./routes/account.js";
 
-app.use("/api", premiumRoutes);
-app.use("/api", accountRoutes);
-
-
-const app = express();
-
-// 1) Stripe webhook (raw body) – must be BEFORE express.json()
-app.use("/api/premium", premiumRoutes); // webhook inside uses express.raw
-
+// Stripe init
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: "2024-06-20",
+});
 
 // Stripe webhook must use raw body
 app.post(
@@ -112,14 +109,6 @@ app.post(
 // 2) Normal JSON parsing for the rest of the app
 app.use(express.json());
 
-// ... other app.use(...) for routes that expect JSON
-// app.use("/api/auth", authRoutes);
-// app.use("/api/whatever", somethingElse);
-import Stripe from "stripe";
-
-// DB
-import { query } from "./db/db.js";
-
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2024-06-20",
 });
@@ -133,6 +122,8 @@ app.use(cors());
 app.use("/api/garage", garageRouter);
 app.use("/api", specRouter);
 app.use("/api/auth", passwordResetRoutes);
+app.use("/api", premiumRoutes);
+app.use("/api", accountRoutes);
 
 
 // =============================
