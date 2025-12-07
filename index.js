@@ -10,6 +10,7 @@ dotenv.config();
 import authRouter from "./routes/auth.js";
 import garageRouter from "./routes/garage.js";
 import specRouter from "./routes/spec.js";
+import passwordResetRoutes from "./routes/passwordReset.js";
 
 
 // DB
@@ -23,6 +24,7 @@ app.use(express.json());
 app.use(cors());
 app.use("/api/garage", garageRouter);
 app.use("/api", specRouter);
+app.use("/api/auth", passwordResetRoutes);
 
 
 // =============================

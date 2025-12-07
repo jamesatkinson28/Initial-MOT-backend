@@ -207,108 +207,112 @@ async function fetchSpecDataFromAPI(vrm) {
 // UNLOCK SPEC ROUTE (CORRECTED VERSION)
 // ------------------------------------------------------------
 router.post("/unlock-spec", async (req, res) => {
-  req.user = { id: 1 }; // force a valid user
   try {
     const { vrm } = req.body;
     if (!vrm) return res.status(400).json({ error: "VRM required" });
 
     const vrmUpper = vrm.toUpperCase();
-    const user_id = req.user.id;
 
-    // Check cache
+    // User may or may not be logged in
+    const user = req.user || null;
+    const user_id = user ? user.id : null;
+
+    // --- STEP 1: Check cache ---
     const cached = await query(
       `SELECT spec_json FROM vehicle_specs WHERE vrm=$1`,
       [vrmUpper]
     );
 
-    // Check if already unlocked
-	const unlocked = await query(
-	  `SELECT 1 FROM unlocked_specs WHERE user_id=$1 AND vrm=$2`,
-	  [user_id, vrmUpper]
-	);
+    // --- STEP 2: If logged in, check if already unlocked ---
+    if (user_id) {
+      const unlocked = await query(
+        `SELECT 1 FROM unlocked_specs WHERE user_id=$1 AND vrm=$2`,
+        [user_id, vrmUpper]
+      );
 
-	if (unlocked.rows.length > 0) {
-	  let specData = null;
+      if (unlocked.rows.length > 0) {
+        const specData =
+          cached.rows.length > 0
+            ? cached.rows[0].spec_json
+            : await fetchSpecDataFromAPI(vrmUpper);
 
-	// Try load cached spec
-	  if (cached.rows.length > 0) {
-		specData = cached.rows[0].spec_json;
-	  } else {
-		// Fetch fresh spec if not in cache
-		specData = await fetchSpecDataFromAPI(vrmUpper);
-
-		// Store it for future use
-		  if (specData) {
-			await query(
-			  `INSERT INTO vehicle_specs (vrm, spec_json)
-			  VALUES ($1, $2)
-			  ON CONFLICT (vrm) DO UPDATE SET spec_json=$2, updated_at=NOW()`,
-			  [vrmUpper, specData]
-			);
-		  }
-		}
-
-		return res.json({
-		  success: true,
-		  price: 0,
-		  alreadyUnlocked: true,
-		  spec: specData
-		});
-	  }
-
-
-    // Premium logic
-    const userRow = await query(
-      `SELECT premium, premium_until, monthly_unlocks_remaining 
-       FROM users WHERE id=$1`,
-      [user_id]
-    );
-
-    const user = userRow.rows[0];
-    const isPremium =
-      user.premium &&
-      (!user.premium_until || new Date(user.premium_until) > new Date());
-
-    let remaining = isPremium ? await resetMonthlyIfNeeded(user_id) : null;
-    let price = 1.49;
-
-    if (isPremium) {
-      if (remaining > 0) {
-        price = 0;
-        await query(
-          `UPDATE users SET monthly_unlocks_remaining = monthly_unlocks_remaining - 1 WHERE id=$1`,
-          [user_id]
-        );
-      } else {
-        price = Number((1.49 * 0.75).toFixed(2)); // 25% discount
+        return res.json({
+          success: true,
+          price: 0,
+          alreadyUnlocked: true,
+          saved: true,
+          spec: specData
+        });
       }
     }
 
-    // Fetch fresh spec
-    const spec = await fetchSpecDataFromAPI(vrmUpper);
-    if (!spec) return res.status(404).json({ error: "Vehicle spec not found" });
+    // --- STEP 3: PREMIUM LOGIC ONLY IF LOGGED IN ---
+    let price = 1.49;
+    let isPremium = false;
+    let remainingFreeUnlocks = null;
 
-    // Cache it
+    if (user_id) {
+      const userRow = await query(
+        `SELECT premium, premium_until, monthly_unlocks_remaining 
+         FROM users WHERE id=$1`,
+        [user_id]
+      );
+
+      const u = userRow.rows[0];
+      isPremium =
+        u.premium &&
+        (!u.premium_until || new Date(u.premium_until) > new Date());
+
+      if (isPremium) {
+        remainingFreeUnlocks = await resetMonthlyIfNeeded(user_id);
+
+        if (remainingFreeUnlocks > 0) {
+          price = 0;
+          await query(
+            `UPDATE users 
+             SET monthly_unlocks_remaining = monthly_unlocks_remaining - 1 
+             WHERE id=$1`,
+            [user_id]
+          );
+        } else {
+          price = Number((1.49 * 0.75).toFixed(2)); // 25% discount
+        }
+      }
+    }
+
+    // --- STEP 4: Fetch spec (cache first) ---
+    let spec = cached.rows.length > 0
+      ? cached.rows[0].spec_json
+      : await fetchSpecDataFromAPI(vrmUpper);
+
+    if (!spec)
+      return res.status(404).json({ error: "Vehicle spec not found" });
+
+    // Store/refresh cache
     await query(
       `INSERT INTO vehicle_specs (vrm, spec_json)
        VALUES ($1, $2)
-       ON CONFLICT (vrm) DO UPDATE SET spec_json=$2, updated_at=NOW()`,
+       ON CONFLICT (vrm) DO UPDATE
+       SET spec_json=$2, updated_at=NOW()`,
       [vrmUpper, spec]
     );
 
-    // Fix: Prevent duplicate unlock errors
-    await query(
-      `INSERT INTO unlocked_specs (user_id, vrm)
-       VALUES ($1, $2)
-       ON CONFLICT (user_id, vrm) DO NOTHING`,
-      [user_id, vrmUpper]
-    );
+    // --- STEP 5: Save unlock ONLY IF LOGGED IN ---
+    if (user_id) {
+      await query(
+        `INSERT INTO unlocked_specs (user_id, vrm)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id, vrm) DO NOTHING`,
+        [user_id, vrmUpper]
+      );
+    }
 
     return res.json({
       success: true,
       price,
       isPremium,
-      remainingFreeUnlocks: isPremium ? remaining - (price === 0 ? 1 : 0) : null,
+      remainingFreeUnlocks,
+      saved: !!user_id,   // tells frontend if unlock persisted
       spec
     });
 
@@ -317,5 +321,6 @@ router.post("/unlock-spec", async (req, res) => {
     res.status(500).json({ error: "Failed to unlock spec" });
   }
 });
+
 
 export default router;
