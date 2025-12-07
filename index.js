@@ -11,10 +11,118 @@ import authRouter from "./routes/auth.js";
 import garageRouter from "./routes/garage.js";
 import specRouter from "./routes/spec.js";
 import passwordResetRoutes from "./routes/passwordReset.js";
+import premiumRoutes from "./routes/premium.js";
+import accountRoutes from "./routes/account.js";
 
+app.use("/api", premiumRoutes);
+app.use("/api", accountRoutes);
+
+
+const app = express();
+
+// 1) Stripe webhook (raw body) – must be BEFORE express.json()
+app.use("/api/premium", premiumRoutes); // webhook inside uses express.raw
+
+
+// Stripe webhook must use raw body
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const sig = req.headers["stripe-signature"];
+
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    } catch (err) {
+      console.error("[Stripe] Webhook signature error:", err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    try {
+      switch (event.type) {
+        case "checkout.session.completed": {
+          const session = event.data.object;
+          const userId = session.metadata?.userId;
+
+          if (!userId) break;
+
+          // Get subscription info so we can set premium_until
+          const subscriptionId = session.subscription;
+          const subscription =
+            typeof subscriptionId === "string"
+              ? await stripe.subscriptions.retrieve(subscriptionId)
+              : null;
+
+          const currentPeriodEnd = subscription?.current_period_end
+            ? new Date(subscription.current_period_end * 1000)
+            : null;
+
+          await query(
+            `
+            UPDATE users
+            SET premium = true,
+                premium_until = $2,
+                monthly_unlocks_remaining = 3,
+                last_unlock_reset = NOW()
+            WHERE id = $1
+          `,
+            [userId, currentPeriodEnd]
+          );
+
+          console.log("[Stripe] User upgraded to premium:", userId);
+          break;
+        }
+
+        case "customer.subscription.deleted":
+        case "customer.subscription.cancelled": {
+          const sub = event.data.object;
+          const userId = sub.metadata?.userId;
+          if (!userId) break;
+
+          await query(
+            `
+            UPDATE users
+            SET premium = false
+            WHERE id = $1
+          `,
+            [userId]
+          );
+          console.log("[Stripe] Subscription cancelled for user:", userId);
+          break;
+        }
+
+        default:
+          // other events ignored for now
+          break;
+      }
+
+      res.json({ received: true });
+    } catch (err) {
+      console.error("[Stripe] Webhook handler error:", err);
+      res.status(500).send("Webhook handler failed");
+    }
+  }
+);
+
+// 2) Normal JSON parsing for the rest of the app
+app.use(express.json());
+
+// ... other app.use(...) for routes that expect JSON
+// app.use("/api/auth", authRoutes);
+// app.use("/api/whatever", somethingElse);
+import Stripe from "stripe";
 
 // DB
 import { query } from "./db/db.js";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: "2024-06-20",
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
