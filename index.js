@@ -8,15 +8,22 @@ import { query } from "./db/db.js";
 
 dotenv.config();
 
-// 🎉 CREATE APP FIRST
+// ==================================
+// APP INITIALISATION
+// ==================================
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-// 🎉 CREATE STRIPE ONCE
+// ==================================
+// STRIPE INITIALISATION (CREATE ONCE)
+// ==================================
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2024-06-20",
 });
 
-// Import routes AFTER stripe + app
+// ==================================
+// IMPORT ROUTES
+// ==================================
 import authRouter from "./routes/auth.js";
 import garageRouter from "./routes/garage.js";
 import specRouter from "./routes/spec.js";
@@ -24,7 +31,9 @@ import passwordResetRoutes from "./routes/passwordReset.js";
 import premiumRoutes from "./routes/premium.js";
 import accountRoutes from "./routes/account.js";
 
-// 🎉 STRIPE WEBHOOK — MUST COME BEFORE express.json()
+// ==================================
+// STRIPE WEBHOOK — MUST COME BEFORE express.json()
+// ==================================
 app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
@@ -96,31 +105,25 @@ app.post(
   }
 );
 
-// 🎉 STOP PASTING HERE — DO NOT MOVE ANYTHING BELOW THIS LINE
-
-// 2) Normal JSON parsing for the rest of the app
-app.use(express.json());
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2024-06-20",
-});
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Middleware
+// ==================================
+// NORMAL MIDDLEWARE (AFTER WEBHOOK)
+// ==================================
 app.use(express.json());
 app.use(cors());
+
+// ==================================
+// ROUTES
+// ==================================
+app.use("/api/auth", authRouter);
 app.use("/api/garage", garageRouter);
 app.use("/api", specRouter);
 app.use("/api/auth", passwordResetRoutes);
 app.use("/api", premiumRoutes);
 app.use("/api", accountRoutes);
 
-
-// =============================
-//   DATABASE TEST ENDPOINT
-// =============================
+// ==================================
+// DATABASE TEST ENDPOINT
+// ==================================
 app.get("/test-db", async (req, res) => {
   try {
     const result = await query("SELECT NOW()");
@@ -131,14 +134,9 @@ app.get("/test-db", async (req, res) => {
   }
 });
 
-// =============================
-//   AUTH ROUTES
-// =============================
-app.use("/api/auth", authRouter);
-
-// =============================
-//   DVSA TOKEN CACHE
-// =============================
+// ==================================
+// DVSA TOKEN CACHE
+// ==================================
 let cachedToken = null;
 let tokenExpiry = 0;
 
@@ -155,11 +153,11 @@ async function getToken() {
     client_id: process.env.CLIENT_ID,
     client_secret: process.env.CLIENT_SECRET,
     grant_type: "client_credentials",
-    scope: "https://tapi.dvsa.gov.uk/.default"
+    scope: "https://tapi.dvsa.gov.uk/.default",
   });
 
   const res = await axios.post(tokenUrl, data, {
-    headers: { "Content-Type": "application/x-www-form-urlencoded" }
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
   });
 
   cachedToken = res.data.access_token;
@@ -170,15 +168,15 @@ async function getToken() {
   return cachedToken;
 }
 
-// =============================
-//   VRM CACHE
-// =============================
+// ==================================
+// VRM CACHE
+// ==================================
 const vrmCache = {};
 const CACHE_LIFETIME = 60 * 5;
 
-// =============================
-//   MOT ENDPOINT
-// =============================
+// ==================================
+// MOT ENDPOINT
+// ==================================
 app.get("/mot", async (req, res) => {
   try {
     const vrm = req.query.vrm;
@@ -187,6 +185,7 @@ app.get("/mot", async (req, res) => {
 
     const now = Math.floor(Date.now() / 1000);
 
+    // Cache hit
     if (vrmCache[vrm] && now < vrmCache[vrm].expires) {
       console.log(`⚡ Cache hit for ${vrm}`);
       return res.json(vrmCache[vrm].data);
@@ -203,29 +202,28 @@ app.get("/mot", async (req, res) => {
     const response = await axios.get(url, {
       headers: {
         Authorization: `Bearer ${token}`,
-        "X-API-Key": process.env.API_KEY
-      }
+        "X-API-Key": process.env.API_KEY,
+      },
     });
 
     vrmCache[vrm] = {
       data: response.data,
-      expires: now + CACHE_LIFETIME
+      expires: now + CACHE_LIFETIME,
     };
 
     res.json(response.data);
-
   } catch (err) {
     console.error("❌ MOT API ERROR:", err.response?.data || err.message);
     res.status(500).json({
       error: "Failed to fetch MOT data",
-      details: err.response?.data || err.message
+      details: err.response?.data || err.message,
     });
   }
 });
 
-// =============================
-//   START SERVER
-// =============================
+// ==================================
+// START SERVER
+// ==================================
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on port ${PORT}`);
 });
