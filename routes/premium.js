@@ -1,7 +1,7 @@
 // routes/premium.js
 import express from "express";
 import Stripe from "stripe";
-import { authMiddleware } from "../middleware/auth.js";
+import { authRequired } from "../middleware/auth.js";
 import { query } from "../db/db.js";
 
 const router = express.Router();
@@ -21,7 +21,7 @@ const PRICE_YEARLY  = "price_1SbkHiFxbR2H0cQi0fs8h3IM";
  */
 router.post(
   "/premium/create-checkout-session",
-  authMiddleware,
+  authRequired,
   async (req, res) => {
     try {
       const userId = req.user.id;

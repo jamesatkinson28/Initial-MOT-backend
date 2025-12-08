@@ -1,6 +1,6 @@
 // routes/account.js
 import express from "express";
-import { authMiddleware } from "../middleware/auth.js";
+import { authRequired } from "../middleware/auth.js";
 import { query } from "../db/db.js";
 
 const router = express.Router();
@@ -9,7 +9,7 @@ const router = express.Router();
  * GET /api/account/overview
  * Returns: email, premium, premium_until, monthly_unlocks_remaining, total_unlocked
  */
-router.get("/account/overview", authMiddleware, async (req, res) => {
+router.get("/account/overview", authRequired, async (req, res) => {
   try {
     const userId = req.user.id;
 
