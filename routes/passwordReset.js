@@ -4,6 +4,8 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { query } from "../db/db.js";
 
+import { Resend } from 'resend';
+
 const router = express.Router();
 
 // ------------------------------------------------------------------
@@ -13,76 +15,36 @@ const router = express.Router();
 const APP_RESET_URL_BASE =
   process.env.PASSWORD_RESET_URL_BASE || "https://garagegpt.co.uk/reset-password";
 
-const MAILERSEND_API_KEY = process.env.MAILERSEND_API_KEY;
-const MAILERSEND_FROM = process.env.MAILERSEND_FROM || "no-reply@garagegpt.co.uk";
-const MAILERSEND_FROM_NAME = process.env.MAILERSEND_FROM_NAME || "GarageGPT";
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ------------------------------------------------------------------
-// Helper: send email via MailerSend HTTP API
+// Helper: send email via Resend HTTP API
 // ------------------------------------------------------------------
 
-async function sendPasswordResetEmail(toEmail, resetUrl) {
-  if (!MAILERSEND_API_KEY) {
-    console.warn(
-      "[PasswordReset] MAILERSEND_API_KEY missing. Not sending email. Reset URL:",
-      resetUrl
-    );
-    return;
-  }
+async function sendResetEmail(email, token) {
+  const resetLink = `${APP_RESET_URL_BASE}?token=${token}`;
 
-  const payload = {
-    from: {
-      email: MAILERSEND_FROM,
-      name: MAILERSEND_FROM_NAME,
-    },
-    to: [{ email: toEmail }],
-    subject: "Reset your GarageGPT password",
-    text: `We received a request to reset your GarageGPT password.\n\nIf this was you, click the link below:\n\n${resetUrl}\n\nIf you didn’t request this, you can ignore this email.`,
-    html: `
-      <p>We received a request to reset your <strong>GarageGPT</strong> password.</p>
-      <p>If this was you, click the button below:</p>
-      <p>
-        <a
-          href="${resetUrl}"
-          style="
-            display:inline-block;
-            padding:10px 18px;
-            background-color:#2563eb;
-            color:#ffffff;
-            text-decoration:none;
-            border-radius:6px;
-            font-weight:600;
-          "
-        >
-          Reset password
-        </a>
-      </p>
-      <p>Or copy and paste this link into your browser:</p>
-      <p><a href="${resetUrl}">${resetUrl}</a></p>
-      <p>If you didn’t request this, you can safely ignore this email.</p>
-    `,
-  };
+  try {
+    await resend.emails.send({
+      from: process.env.RESET_EMAIL_FROM,  // e.g. no-reply@garagegpt.co.uk
+      to: email,
+      subject: "GarageGPT Password Reset",
+      html: `
+        <h2>Password Reset Request</h2>
+        <p>Use the code below to reset your password:</p>
+        <h1 style="font-size: 24px;">${token}</h1>
+        <p>Or click this link: <a href="${resetLink}">${resetLink}</a></p>
+        <p>If you didn't request this, you can ignore this email.</p>
+      `,
+    });
 
-  const res = await fetch("https://api.mailersend.com/v1/email", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${MAILERSEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    console.error(
-      "[PasswordReset] MailerSend error:",
-      res.status,
-      res.statusText,
-      body
-    );
+    console.log("[Resend] Password reset email sent");
+  } catch (err) {
+    console.error("[Resend] Error sending reset email:", err);
     throw new Error("Failed to send reset email");
   }
 }
+
 
 // ------------------------------------------------------------------
 // POST /api/auth/request-password-reset
@@ -137,8 +99,8 @@ router.post("/request-password-reset", async (req, res) => {
       resetUrl = `${APP_RESET_URL_BASE}?token=${token}`;
     }
 
-    // Send email (or log if no MAILERSEND_API_KEY)
-    await sendPasswordResetEmail(user.email, resetUrl);
+    // Send email 
+    await sendResetEmail(user.email, token);
 
     return res.json(genericResponse);
   } catch (err) {
