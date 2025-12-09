@@ -17,7 +17,7 @@ setInterval(async () => {
   } catch (err) {
     console.error("[Cleanup Error]", err);
   }
-}, 1000 * 60 * 30); // 30 minutes
+}, 1000 * 60 * 30);
 
 const router = express.Router();
 
@@ -77,14 +77,14 @@ router.post("/send-reset-code", async (req, res) => {
 
     const userRes = await query("SELECT id FROM users WHERE email=$1", [email]);
     if (userRes.rows.length === 0) {
-      console.log("[Reset] Email not found — return silent success.");
+      console.log("[Reset] Email not found — silent success for security.");
       return res.json({ success: true });
     }
 
     const userId = userRes.rows[0].id;
 
     // ==============================
-    // RATE LIMIT: 1 request per minute
+    // RATE LIMIT (1 request per 60 seconds)
     // ==============================
     const recent = await query(
       `
@@ -109,11 +109,11 @@ router.post("/send-reset-code", async (req, res) => {
       }
     }
 
-    // Generate secure 6-digit code
+    // Create secure 6-digit OTP
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const codeHash = crypto.createHash("sha256").update(code).digest("hex");
 
-    // Store OTP (UPSERT)
+    // Store hashed token (UPSERT)
     await query(
       `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, used)
        VALUES ($1, $2, NOW() + INTERVAL '15 minutes', FALSE)
@@ -122,7 +122,7 @@ router.post("/send-reset-code", async (req, res) => {
       [userId, codeHash]
     );
 
-    // Send email
+    // Send code via email
     await sendResetEmail(email, code);
 
     return res.json({ success: true });
@@ -141,7 +141,30 @@ router.post("/verify-reset-code", async (req, res) => {
     if (!email || !code)
       return res.status(400).json({ error: "Email and code required" });
 
-    const codeHash = crypto.createHash("sha256").update(code).digest("hex");
+    // =====================================
+    // LOCKOUT CHECK (5 failed attempts in 10 mins)
+    // =====================================
+    const attemptRes = await query(
+      `SELECT attempts, last_attempt FROM password_reset_attempts WHERE email=$1`,
+      [email]
+    );
+
+    if (attemptRes.rows.length > 0) {
+      const { attempts, last_attempt } = attemptRes.rows[0];
+      const last = new Date(last_attempt);
+      const minutesAgo = (Date.now() - last.getTime()) / 1000 / 60;
+
+      if (attempts >= 5 && minutesAgo < 10) {
+        return res.status(429).json({
+          error: "Too many incorrect attempts. Try again in 10 minutes.",
+        });
+      }
+    }
+
+    const codeHash = crypto
+      .createHash("sha256")
+      .update(code)
+      .digest("hex");
 
     const result = await query(
       `SELECT prt.*
@@ -155,7 +178,7 @@ router.post("/verify-reset-code", async (req, res) => {
       [email, codeHash]
     );
 
-    // Invalid code → Log failed attempt
+    // INVALID CODE → LOG FAILED ATTEMPT
     if (result.rows.length === 0) {
       await query(
         `
@@ -171,7 +194,7 @@ router.post("/verify-reset-code", async (req, res) => {
       return res.status(400).json({ error: "Invalid or expired code" });
     }
 
-    // SUCCESS → reset attempts
+    // VALID → RESET ATTEMPT COUNTER
     await query(`DELETE FROM password_reset_attempts WHERE email=$1`, [email]);
 
     return res.json({ success: true });
@@ -195,7 +218,6 @@ router.post("/reset-password", async (req, res) => {
       return res.status(400).json({ error: "Invalid request" });
 
     const userId = userRes.rows[0].id;
-
     const hashedPw = await bcrypt.hash(password, 10);
 
     await query("UPDATE users SET password_hash=$1 WHERE id=$2", [
