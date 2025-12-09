@@ -32,7 +32,7 @@ async function sendResetEmail(email, token) {
       html: `
         <h2>Password Reset Request</h2>
         <p>Use the code below to reset your password:</p>
-        <h1 style="font-size: 24px;">${token}</h1>
+        <h1 style="font-size: 24px;">${rawToken}</h1>
         <p>Or click this link: <a href="${resetLink}">${resetLink}</a></p>
         <p>If you didn't request this, you can ignore this email.</p>
       `,
@@ -77,9 +77,12 @@ router.post("/request-password-reset", async (req, res) => {
 
     const user = userResult.rows[0];
 
-    // Generate token
-    const token = crypto.randomBytes(32).toString("hex");
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    // Generate a 6-digit numeric code
+	const rawToken = Math.floor(100000 + Math.random() * 900000).toString();
+
+	// Hash it before storing to DB
+	const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+
 
     const expiresMinutes = 60;
     const expiresAt = new Date(Date.now() + expiresMinutes * 60 * 1000);
@@ -94,13 +97,13 @@ router.post("/request-password-reset", async (req, res) => {
     // Build reset URL
     let resetUrl;
     if (APP_RESET_URL_BASE.includes("?")) {
-      resetUrl = `${APP_RESET_URL_BASE}&token=${token}`;
+      resetUrl = `${APP_RESET_URL_BASE}&token=${rawToken}`;
     } else {
-      resetUrl = `${APP_RESET_URL_BASE}?token=${token}`;
+      resetUrl = `${APP_RESET_URL_BASE}?token=${rawToken}`;
     }
 
     // Send email 
-    await sendResetEmail(user.email, token);
+    await sendResetEmail(user.email, rawToken);
 
     return res.json(genericResponse);
   } catch (err) {
