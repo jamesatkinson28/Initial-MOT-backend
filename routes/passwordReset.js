@@ -87,6 +87,8 @@ router.post("/send-reset-code", async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     console.error("[Reset] SEND RESET CODE ERROR:", err);
+	console.error("[Reset] SEND RESET CODE ERROR:", err);
+	console.error("[RESET DEBUG]:", err?.response?.data || err);
     return res.status(500).json({ error: "Failed to send reset code" });
   }
 });
