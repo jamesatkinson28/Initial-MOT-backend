@@ -4,6 +4,21 @@ import bcrypt from "bcryptjs";
 import { query } from "../db/db.js";
 import { Resend } from "resend";
 
+// ======================================
+// CLEANUP EXPIRED TOKENS EVERY 30 MINUTES
+// ======================================
+setInterval(async () => {
+  try {
+    await query(
+      `DELETE FROM password_reset_tokens 
+       WHERE expires_at < NOW() - INTERVAL '1 hour'`
+    );
+    console.log("[Cleanup] Old reset tokens removed");
+  } catch (err) {
+    console.error("[Cleanup Error]", err);
+  }
+}, 1000 * 60 * 30); // 30 minutes
+
 const router = express.Router();
 
 // ==============================
@@ -62,17 +77,43 @@ router.post("/send-reset-code", async (req, res) => {
 
     const userRes = await query("SELECT id FROM users WHERE email=$1", [email]);
     if (userRes.rows.length === 0) {
-      console.log("[Reset] Email not found, returning success silently.");
+      console.log("[Reset] Email not found — return silent success.");
       return res.json({ success: true });
     }
 
     const userId = userRes.rows[0].id;
 
+    // ==============================
+    // RATE LIMIT: 1 request per minute
+    // ==============================
+    const recent = await query(
+      `
+        SELECT expires_at
+        FROM password_reset_tokens
+        WHERE user_id = $1
+        ORDER BY expires_at DESC
+        LIMIT 1
+      `,
+      [userId]
+    );
+
+    if (recent.rows.length > 0) {
+      const lastExpires = new Date(recent.rows[0].expires_at);
+      const elapsed = Date.now() - (lastExpires.getTime() - 15 * 60 * 1000);
+
+      if (elapsed < 60 * 1000) {
+        console.log("[Reset] Rate-limited request for user:", userId);
+        return res.status(429).json({
+          error: "Please wait 60 seconds before requesting another reset code.",
+        });
+      }
+    }
+
     // Generate secure 6-digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const codeHash = crypto.createHash("sha256").update(code).digest("hex");
 
-    // Store OTP (create table if needed — you already have this)
+    // Store OTP (UPSERT)
     await query(
       `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, used)
        VALUES ($1, $2, NOW() + INTERVAL '15 minutes', FALSE)
@@ -87,8 +128,6 @@ router.post("/send-reset-code", async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     console.error("[Reset] SEND RESET CODE ERROR:", err);
-	console.error("[Reset] SEND RESET CODE ERROR:", err);
-	console.error("[RESET DEBUG]:", err?.response?.data || err);
     return res.status(500).json({ error: "Failed to send reset code" });
   }
 });
@@ -116,9 +155,24 @@ router.post("/verify-reset-code", async (req, res) => {
       [email, codeHash]
     );
 
+    // Invalid code → Log failed attempt
     if (result.rows.length === 0) {
+      await query(
+        `
+          INSERT INTO password_reset_attempts (email, attempts, last_attempt)
+          VALUES ($1, 1, NOW())
+          ON CONFLICT (email)
+          DO UPDATE SET attempts = password_reset_attempts.attempts + 1,
+                        last_attempt = NOW()
+        `,
+        [email]
+      );
+
       return res.status(400).json({ error: "Invalid or expired code" });
     }
+
+    // SUCCESS → reset attempts
+    await query(`DELETE FROM password_reset_attempts WHERE email=$1`, [email]);
 
     return res.json({ success: true });
   } catch (err) {
@@ -137,7 +191,6 @@ router.post("/reset-password", async (req, res) => {
       return res.status(400).json({ error: "Missing fields" });
 
     const userRes = await query("SELECT id FROM users WHERE email=$1", [email]);
-
     if (userRes.rows.length === 0)
       return res.status(400).json({ error: "Invalid request" });
 
@@ -145,17 +198,13 @@ router.post("/reset-password", async (req, res) => {
 
     const hashedPw = await bcrypt.hash(password, 10);
 
-    // Update password
     await query("UPDATE users SET password_hash=$1 WHERE id=$2", [
       hashedPw,
       userId,
     ]);
 
-    // Mark OTP as used
     await query(
-      `UPDATE password_reset_tokens
-       SET used=TRUE
-       WHERE user_id=$1`,
+      `UPDATE password_reset_tokens SET used=TRUE WHERE user_id=$1`,
       [userId]
     );
 
