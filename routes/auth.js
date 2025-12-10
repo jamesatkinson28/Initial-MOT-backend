@@ -1,6 +1,7 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { query } from "../db/db.js";
 import { authRequired } from "../middleware/auth.js";
 
@@ -10,20 +11,32 @@ const router = express.Router();
 const cleanEmail = (email) => email.trim().toLowerCase();
 
 // ==========================================
-// JWT signing function WITH tokenVersion
+// TOKEN HELPERS
 // ==========================================
-function signToken(user) {
+
+// Access token (short-lived: 30 minutes)
+function signAccessToken(user) {
   return jwt.sign(
     {
       id: user.id,
       email: user.email,
       premium: user.premium,
       premium_until: user.premium_until,
-      tokenVersion: user.token_version   // ⬅ NEW — required for session invalidation
+      tokenVersion: user.token_version
     },
     process.env.JWT_SECRET,
-    { expiresIn: "30d" }
+    { expiresIn: "30m" }
   );
+}
+
+// Refresh token (long-lived: 30 days)
+function generateRefreshToken() {
+  return crypto.randomBytes(40).toString("hex");
+}
+
+// Creates hashed refresh token for DB storage
+function hashRefresh(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
 }
 
 // ==========================================
@@ -40,7 +53,6 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "Password must be 6+ characters" });
 
     const emailNorm = cleanEmail(email);
-
     const passwordHash = await bcrypt.hash(password, 10);
 
     const result = await query(
@@ -51,15 +63,35 @@ router.post("/register", async (req, res) => {
     );
 
     const user = result.rows[0];
-    const token = signToken(user);
 
-    res.json({ token, user });
+    // Create tokens
+    const accessToken = signAccessToken(user);
+    const refreshToken = generateRefreshToken();
+    const refreshHash = hashRefresh(refreshToken);
+
+    // Store refresh token in DB
+    await query(
+      `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '30 days')`,
+      [user.id, refreshHash]
+    );
+
+    res.json({
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        premium: user.premium,
+        premium_until: user.premium_until,
+        token_version: user.token_version
+      }
+    });
 
   } catch (err) {
     if (err.code === "23505") {
       return res.status(409).json({ error: "Email already registered" });
     }
-
     console.error("REGISTER ERROR", err);
     return res.status(500).json({ error: "Registration failed" });
   }
@@ -71,7 +103,6 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-
     const emailNorm = cleanEmail(email);
 
     const result = await query(
@@ -90,11 +121,23 @@ router.post("/login", async (req, res) => {
     if (!match)
       return res.status(401).json({ error: "Invalid credentials" });
 
-    // Token now includes tokenVersion
-    const token = signToken(user);
+    // Create tokens
+    const accessToken = signAccessToken(user);
+    const refreshToken = generateRefreshToken();
+    const refreshHash = hashRefresh(refreshToken);
+
+    // Store refresh token (rotate any existing)
+    await query(
+      `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '30 days')
+       ON CONFLICT (user_id)
+       DO UPDATE SET token_hash = $2, expires_at = NOW() + INTERVAL '30 days'`,
+      [user.id, refreshHash]
+    );
 
     res.json({
-      token,
+      accessToken,
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -111,7 +154,7 @@ router.post("/login", async (req, res) => {
 });
 
 // ==========================================
-// GET /api/auth/me (who am I?)
+// WHOAMI (requires auth)
 // ==========================================
 router.get("/me", authRequired, async (req, res) => {
   res.json({ user: req.user });

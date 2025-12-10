@@ -231,6 +231,8 @@ router.post("/reset-password", async (req, res) => {
 	   WHERE id=$2`,
 	  [hashedPw, userId]
 	);
+	await query(`DELETE FROM refresh_tokens WHERE user_id=$1`, [userId]);
+
 
     await query(`UPDATE password_reset_tokens SET used=TRUE WHERE user_id=$1`, [
       userId,
