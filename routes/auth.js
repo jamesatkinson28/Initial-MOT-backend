@@ -4,27 +4,31 @@ import jwt from "jsonwebtoken";
 import { query } from "../db/db.js";
 import { authRequired } from "../middleware/auth.js";
 
-
 const router = express.Router();
 
 // Normalize email
 const cleanEmail = (email) => email.trim().toLowerCase();
 
-// JWT signing function
+// ==========================================
+// JWT signing function WITH tokenVersion
+// ==========================================
 function signToken(user) {
   return jwt.sign(
     {
       id: user.id,
       email: user.email,
       premium: user.premium,
-      premium_until: user.premium_until
+      premium_until: user.premium_until,
+      tokenVersion: user.token_version   // ⬅ NEW — required for session invalidation
     },
     process.env.JWT_SECRET,
     { expiresIn: "30d" }
   );
 }
 
+// ==========================================
 // REGISTER
+// ==========================================
 router.post("/register", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -42,17 +46,14 @@ router.post("/register", async (req, res) => {
     const result = await query(
       `INSERT INTO users (email, password_hash)
        VALUES ($1, $2)
-       RETURNING id, email, premium, premium_until`,
+       RETURNING id, email, premium, premium_until, token_version`,
       [emailNorm, passwordHash]
     );
 
     const user = result.rows[0];
     const token = signToken(user);
 
-    res.json({
-      token,
-      user
-    });
+    res.json({ token, user });
 
   } catch (err) {
     if (err.code === "23505") {
@@ -64,7 +65,9 @@ router.post("/register", async (req, res) => {
   }
 });
 
+// ==========================================
 // LOGIN
+// ==========================================
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -72,7 +75,7 @@ router.post("/login", async (req, res) => {
     const emailNorm = cleanEmail(email);
 
     const result = await query(
-      `SELECT id, email, password_hash, premium, premium_until
+      `SELECT id, email, password_hash, premium, premium_until, token_version
        FROM users
        WHERE email=$1`,
       [emailNorm]
@@ -87,6 +90,7 @@ router.post("/login", async (req, res) => {
     if (!match)
       return res.status(401).json({ error: "Invalid credentials" });
 
+    // Token now includes tokenVersion
     const token = signToken(user);
 
     res.json({
@@ -95,7 +99,8 @@ router.post("/login", async (req, res) => {
         id: user.id,
         email: user.email,
         premium: user.premium,
-        premium_until: user.premium_until
+        premium_until: user.premium_until,
+        token_version: user.token_version
       }
     });
 
@@ -104,11 +109,12 @@ router.post("/login", async (req, res) => {
     return res.status(500).json({ error: "Login failed" });
   }
 });
-// GET /api/auth/me  (who am I?)
+
+// ==========================================
+// GET /api/auth/me (who am I?)
+// ==========================================
 router.get("/me", authRequired, async (req, res) => {
-  // req.user is set by authRequired middleware
   res.json({ user: req.user });
 });
-
 
 export default router;

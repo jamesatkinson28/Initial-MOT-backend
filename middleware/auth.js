@@ -1,7 +1,8 @@
 // middleware/auth.js
 import jwt from "jsonwebtoken";
+import { query } from "../db/db.js";
 
-export function authRequired(req, res, next) {
+export async function authRequired(req, res, next) {
   try {
     const authHeader = req.headers.authorization || "";
 
@@ -10,19 +11,35 @@ export function authRequired(req, res, next) {
     }
 
     const token = authHeader.split(" ")[1];
+    if (!token) return res.status(401).json({ error: "Missing token" });
 
-    if (!token) {
-      return res.status(401).json({ error: "Missing token" });
-    }
-
+    // Decode token
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Attach user payload to request for later use
+    // Fetch token_version from DB
+    const userRes = await query("SELECT token_version FROM users WHERE id=$1", [
+      payload.id,
+    ]);
+
+    if (userRes.rows.length === 0) {
+      return res.status(401).json({ error: "User not found" });
+    }
+
+    const dbVersion = userRes.rows[0].token_version;
+
+    // 🔥 Session invalidation check:
+    // If tokenVersion (from JWT) !== DB token_version → force logout
+    if (payload.tokenVersion !== dbVersion) {
+      return res.status(401).json({ error: "Session expired. Please log in again." });
+    }
+
+    // Attach user
     req.user = {
       id: payload.id,
       email: payload.email,
       premium: payload.premium,
-      premium_until: payload.premium_until
+      premium_until: payload.premium_until,
+      tokenVersion: payload.tokenVersion,
     };
 
     next();

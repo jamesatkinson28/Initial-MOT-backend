@@ -225,10 +225,12 @@ router.post("/reset-password", async (req, res) => {
     const userId = user.rows[0].id;
     const hashedPw = await bcrypt.hash(password, 10);
 
-    await query(`UPDATE users SET password_hash=$1 WHERE id=$2`, [
-      hashedPw,
-      userId,
-    ]);
+    await query(
+	  `UPDATE users 
+	   SET password_hash=$1, token_version = token_version + 1 
+	   WHERE id=$2`,
+	  [hashedPw, userId]
+	);
 
     await query(`UPDATE password_reset_tokens SET used=TRUE WHERE user_id=$1`, [
       userId,
