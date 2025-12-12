@@ -51,10 +51,18 @@ MOT summary:
 
 Return JSON ONLY with:
 {
-  "explanation": string (max 60 words),
-  "preventativeAdvice": string (max 60 words),
+  "headline": string (max 6 words),
+  "why": string (max 40 words, probabilistic language),
+  "checks": string[] (2–3 practical checks),
+  "tip": string (max 25 words),
   "confidence": number (0-1)
 }
+
+Rules:
+- Do not claim faults exist.
+- Use “may”, “likely”, “suggests”.
+- If data is limited, say so briefly.
+- Avoid repeating wording across categories.
 `.trim();
 
     const completion = await openai.chat.completions.create({
@@ -64,14 +72,27 @@ Return JSON ONLY with:
       response_format: { type: "json_object" },
     });
 
+    const usage = completion.usage;
+    if (usage) {
+      console.log("MOT AI token usage:", {
+        model: "gpt-4.1-mini",
+        prompt: usage.prompt_tokens,
+        completion: usage.completion_tokens,
+        total: usage.total_tokens,
+      });
+    }
+
     const text = completion.choices?.[0]?.message?.content || "{}";
     const data = JSON.parse(text);
 
     return res.json({
-      explanation: data.explanation || "",
-      preventativeAdvice: data.preventativeAdvice || "",
+      headline: typeof data.headline === "string" ? data.headline : "",
+      why: typeof data.why === "string" ? data.why : "",
+      checks: Array.isArray(data.checks) ? data.checks.slice(0, 3) : [],
+      tip: typeof data.tip === "string" ? data.tip : "",
       confidence: typeof data.confidence === "number" ? data.confidence : 0.6,
     });
+
   } catch (e) {
     console.log("mot-insight/explain error", e);
     return res.status(500).json({ error: "AI failed" });
