@@ -19,6 +19,12 @@ router.post("/mot-insight/explain", authRequired, async (req, res) => {
       category, // { id, label, riskLevel, reason, estimatedMinCost, estimatedMaxCost }
       motSummary, // small summary only (counts)
     } = req.body || {};
+	console.log("MOT AI payload:", {
+	  vrm,
+	  categoryId: category?.id,
+	  categoryLabel: category?.label,
+	});
+
 
     if (!vrm || !category?.id || !category?.label) {
       return res.status(400).json({ error: "Missing required fields" });
