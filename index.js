@@ -31,6 +31,7 @@ import passwordResetRoutes from "./routes/passwordReset.js";
 import premiumRoutes from "./routes/premium.js";
 import accountRoutes from "./routes/account.js";
 import refreshRoutes from "./routes/refresh.js";
+import motInsightAi from "./routes/motInsightAi.js";
 
 // ==================================
 // STRIPE WEBHOOK — MUST COME BEFORE express.json()
@@ -122,6 +123,7 @@ app.use("/api/auth", passwordResetRoutes);
 app.use("/api", premiumRoutes);
 app.use("/api", accountRoutes);
 app.use("/api/auth", refreshRoutes);
+app.use("/api", motInsightAi);
 
 // ==================================
 // DATABASE TEST ENDPOINT
