@@ -73,14 +73,21 @@ Rules:
     });
 
     const usage = completion.usage;
-    if (usage) {
-      console.log("MOT AI token usage:", {
-        model: "gpt-4.1-mini",
-        prompt: usage.prompt_tokens,
-        completion: usage.completion_tokens,
-        total: usage.total_tokens,
-      });
-    }
+	if (usage) {
+	  const PRICING = { inPer1M: 0.40, outPer1M: 1.60 }; // gpt-4.1-mini
+	  const estCost =
+		(usage.prompt_tokens * PRICING.inPer1M +
+		  usage.completion_tokens * PRICING.outPer1M) /
+		1_000_000;
+
+	console.log("MOT_AI_USAGE", {
+      model: "gpt-4.1-mini",
+      prompt: usage.prompt_tokens,
+      completion: usage.completion_tokens,
+      total: usage.total_tokens,
+      estCostUsd: Number(estCost.toFixed(8)),
+	});
+  }
 
     const text = completion.choices?.[0]?.message?.content || "{}";
     const data = JSON.parse(text);
