@@ -1,10 +1,10 @@
 import express from "express";
-import auth from "../middleware/auth.js";
+import { authMiddleware } from "../middleware/auth.js";
 import openai from "../lib/openai.js";
 
 const router = express.Router();
 
-router.post("/mot-explain", auth, async (req, res) => {
+router.post("/mot-explain", authMiddleware, async (req, res) => {
   const { text, type } = req.body;
 
   if (!text) {
