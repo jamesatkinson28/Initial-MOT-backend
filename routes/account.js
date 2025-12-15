@@ -9,7 +9,7 @@ const router = express.Router();
  * GET /api/account/overview
  * Returns: email, premium, premium_until, monthly_unlocks_remaining, total_unlocked
  */
-router.get("/account/overview", authRequired, async (req, res) => {
+router.get("/overview", auth, async (req, res) => {
   try {
     const userId = req.user.id;
 
