@@ -7,37 +7,6 @@ const router = express.Router();
 
 const ENABLE_IMAGES = false;
 
-// ------------------------------------------------------------
-// RESET MONTHLY FREE UNLOCKS
-// ------------------------------------------------------------
-async function resetMonthlyIfNeeded(user_id) {
-  const { rows } = await query(
-    `SELECT monthly_unlocks_remaining, last_unlock_reset 
-     FROM users WHERE id=$1`,
-    [user_id]
-  );
-
-  const user = rows[0];
-  const now = new Date();
-  const lastReset = new Date(user.last_unlock_reset);
-
-  const isNewMonth =
-    now.getMonth() !== lastReset.getMonth() ||
-    now.getFullYear() !== lastReset.getFullYear();
-
-  if (isNewMonth) {
-    await query(
-      `UPDATE users
-       SET monthly_unlocks_remaining = 3,
-           last_unlock_reset = NOW()
-       WHERE id=$1`,
-      [user_id]
-    );
-    return 3;
-  }
-
-  return user.monthly_unlocks_remaining;
-}
 
 // ------------------------------------------------------------
 // REMOVE NULLS FROM OUTPUT
@@ -206,7 +175,7 @@ async function fetchSpecDataFromAPI(vrm) {
 // ------------------------------------------------------------
 // UNLOCK SPEC ROUTE (CORRECTED VERSION)
 // ------------------------------------------------------------
-router.post("/unlock-spec", async (req, res) => {
+router.post("/unlock-spec", authRequired, async (req, res) => {
   try {
     const { vrm } = req.body;
     if (!vrm) return res.status(400).json({ error: "VRM required" });
@@ -214,8 +183,8 @@ router.post("/unlock-spec", async (req, res) => {
     const vrmUpper = vrm.toUpperCase();
 
     // User may or may not be logged in
-    const user = req.user || null;
-    const user_id = user ? user.id : null;
+    const user = req.user;
+	const user_id = user.id;
 
     // --- STEP 1: Check cache ---
     const cached = await query(
@@ -253,10 +222,11 @@ router.post("/unlock-spec", async (req, res) => {
 
     if (user_id) {
       const userRow = await query(
-        `SELECT premium, premium_until, monthly_unlocks_remaining 
-         FROM users WHERE id=$1`,
-        [user_id]
-      );
+		`SELECT premium, premium_until, monthly_unlocks_used
+		FROM users WHERE id=$1`,
+		[user_id]
+	  );
+
 
       const u = userRow.rows[0];
       isPremium =
@@ -264,20 +234,25 @@ router.post("/unlock-spec", async (req, res) => {
         (!u.premium_until || new Date(u.premium_until) > new Date());
 
       if (isPremium) {
-        remainingFreeUnlocks = await resetMonthlyIfNeeded(user_id);
+	    const remaining = Math.max(3 - u.monthly_unlocks_used, 0);
+	    remainingFreeUnlocks = remaining;
 
-        if (remainingFreeUnlocks > 0) {
-          price = 0;
-          await query(
-            `UPDATE users 
-             SET monthly_unlocks_remaining = monthly_unlocks_remaining - 1 
-             WHERE id=$1`,
-            [user_id]
-          );
-        } else {
-          price = Number((1.49 * 0.75).toFixed(2)); // 25% discount
-        }
-      }
+	    if (remaining > 0) {
+		  price = 0;
+
+		  await query(
+		    `
+		    UPDATE users
+		    SET monthly_unlocks_used = monthly_unlocks_used + 1
+		    WHERE id = $1
+		    `,
+		    [user_id]
+		  );
+	    } else {
+	  	  price = Number((1.49 * 0.75).toFixed(2)); // 25% discount
+	    }
+	  }
+
     }
 
     // --- STEP 4: Fetch spec (cache first) ---
@@ -328,70 +303,7 @@ router.post("/unlock-spec", async (req, res) => {
  * body: { vehicle_id }
  * auth: required
  */
-router.post("/spec/unlock", authRequired, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { vehicle_id } = req.body;
 
-    if (!vehicle_id) {
-      return res.status(400).json({ error: "vehicle_id required" });
-    }
-
-    // Load user unlock state
-    const userRes = await query(
-      `
-      SELECT premium, monthly_unlocks_remaining
-      FROM users
-      WHERE id = $1
-      `,
-      [userId]
-    );
-
-    if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    const user = userRes.rows[0];
-
-    // ✅ Premium user with unlocks remaining
-    if (user.premium && user.monthly_unlocks_remaining > 0) {
-      await query(
-        `
-        UPDATE users
-        SET monthly_unlocks_remaining = monthly_unlocks_remaining - 1
-        WHERE id = $1
-        `,
-        [userId]
-      );
-
-      // Optional: record unlock
-      await query(
-        `
-        INSERT INTO unlocked_specs (user_id, vehicle_id)
-        VALUES ($1, $2)
-        ON CONFLICT DO NOTHING
-        `,
-        [userId, vehicle_id]
-      );
-
-      return res.json({
-        unlocked: true,
-        used_unlock: true
-      });
-    }
-
-    // ❌ No unlocks left → paid required
-    return res.json({
-      unlocked: false,
-      used_unlock: false,
-      price: user.premium ? 1.11 : 1.49
-    });
-
-  } catch (err) {
-    console.error("[Spec Unlock] error:", err);
-    res.status(500).json({ error: "Failed to unlock spec" });
-  }
-});
 
 
 export default router;
