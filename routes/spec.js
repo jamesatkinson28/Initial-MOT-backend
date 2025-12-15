@@ -323,4 +323,75 @@ router.post("/unlock-spec", async (req, res) => {
 });
 
 
+/**
+ * POST /api/spec/unlock
+ * body: { vehicle_id }
+ * auth: required
+ */
+router.post("/spec/unlock", authRequired, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { vehicle_id } = req.body;
+
+    if (!vehicle_id) {
+      return res.status(400).json({ error: "vehicle_id required" });
+    }
+
+    // Load user unlock state
+    const userRes = await query(
+      `
+      SELECT premium, monthly_unlocks_remaining
+      FROM users
+      WHERE id = $1
+      `,
+      [userId]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userRes.rows[0];
+
+    // ✅ Premium user with unlocks remaining
+    if (user.premium && user.monthly_unlocks_remaining > 0) {
+      await query(
+        `
+        UPDATE users
+        SET monthly_unlocks_remaining = monthly_unlocks_remaining - 1
+        WHERE id = $1
+        `,
+        [userId]
+      );
+
+      // Optional: record unlock
+      await query(
+        `
+        INSERT INTO unlocked_specs (user_id, vehicle_id)
+        VALUES ($1, $2)
+        ON CONFLICT DO NOTHING
+        `,
+        [userId, vehicle_id]
+      );
+
+      return res.json({
+        unlocked: true,
+        used_unlock: true
+      });
+    }
+
+    // ❌ No unlocks left → paid required
+    return res.json({
+      unlocked: false,
+      used_unlock: false,
+      price: user.premium ? 1.11 : 1.49
+    });
+
+  } catch (err) {
+    console.error("[Spec Unlock] error:", err);
+    res.status(500).json({ error: "Failed to unlock spec" });
+  }
+});
+
+
 export default router;
