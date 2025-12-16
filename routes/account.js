@@ -37,7 +37,10 @@ router.get("/account/overview", authRequired, async (req, res) => {
       email: user.email,
       premium: user.premium,
       premium_until: user.premium_until,
-      monthly_unlocks_remaining: Math.max(3 - user.monthly_unlocks_used, 0),
+      monthly_unlocks_remaining: user.premium
+	  ? Math.max(3 - user.monthly_unlocks_used, 0)
+	  : 0,
+
       total_unlocked: unlocksRes.rows[0].count || 0,
     });
   } catch (err) {
