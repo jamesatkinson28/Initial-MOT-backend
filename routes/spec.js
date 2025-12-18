@@ -53,6 +53,7 @@ function buildCleanSpec(apiResults) {
   const safety = model.Safety || {};
 
   const powertrain = model.Powertrain || {};
+  console.log("POWERTRAIN KEYS:", Object.keys(powertrain));
   const ice = powertrain?.IceDetails || {};
   const transmission = powertrain?.Transmission || {};
 
@@ -181,61 +182,56 @@ function buildCleanSpec(apiResults) {
     };
   }
 // -------------------------
-// ELECTRIC VEHICLE
+// ELECTRIC VEHICLE (EV)
 // -------------------------
-const ev = powertrain?.ElectricVehicleDetails;
+const ev = powertrain?.electricVehicleDetails;
 
 if (ev) {
+  const tech = ev.technicalDetails || {};
+  const perf = ev.performance || {};
 
-
-  const tech = ev.TechnicalDetails || {};
-  const perf = ev.Performance || {};
-
-  const battery = tech.BatteryDetailsList?.[0] || {};
-  const motor = tech.MotorDetailsList?.[0] || {};
-  const port = tech.ChargePortDetailsList?.[0] || {};
-
+  const battery = tech.batteryDetailsList?.[0] || {};
+  const motor = tech.motorDetailsList?.[0] || {};
+  const port = tech.chargePortDetailsList?.[0] || {};
 
   // -------------------------
   // RICH, NESTED EV DATA (SOURCE OF TRUTH)
   // -------------------------
   clean.ev = {
-    powertrain_type: tech?.PowertrainType ?? "BEV",
+    powertrain_type: tech.powertrainType ?? "BEV",
 
     efficiency: {
-      wh_per_mile: perf?.WhMile ?? null,
-      real_range_miles: perf?.RangeFigures?.RealRangeMiles ?? null,
-      real_range_km: perf?.RangeFigures?.RealRangeKm ?? null
+      wh_per_mile: perf.whMile ?? null,
+      real_range_miles: perf.rangeFigures?.realRangeMiles ?? null,
+      real_range_km: perf.rangeFigures?.realRangeKm ?? null
     },
 
     battery: {
-      total_kwh: battery?.TotalCapacityKwh ?? null,
-      usable_kwh: battery?.UsableCapacityKwh ?? null,
-      chemistry: battery?.Chemistry ?? null,
-      voltage: battery?.Voltage ?? null,
-      location: battery?.LocationOnVehicle ?? null,
-      warranty_months: battery?.ManufacturerWarrantyMonths ?? null,
-      warranty_miles: battery?.ManufacturerWarrantyMiles ?? null
+      total_kwh: battery.totalCapacityKwh ?? null,
+      usable_kwh: battery.usableCapacityKwh ?? null,
+      chemistry: battery.chemistry ?? null,
+      voltage: battery.voltage ?? null,
+      location: battery.locationOnVehicle ?? null,
+      warranty_months: battery.manufacturerWarrantyMonths ?? null,
+      warranty_miles: battery.manufacturerWarrantyMiles ?? null
     },
 
     charging: {
-      ac_kw: port?.MaxChargePowerKw ?? null,
-      dc_kw: perf?.MaxChargeInputPowerKw ?? null,
-      port_type: port?.PortType ?? null,
-      port_location: port?.LocationOnVehicle ?? null,
-	  avg_10_to_80_mins:
-	    port?.ChargeTimes?.AverageChargeTimes10To80Percent?.[0]?.TimeInMinutes ??
-	    port?.ChargePortDetailsList?.[0]?.TimeInMinutes ??
-	    null
-
+      ac_kw: port.maxChargePowerKw ?? null,
+      dc_kw: perf.maxChargeInputPowerKw ?? null,
+      port_type: port.portType ?? null,
+      port_location: port.locationOnVehicle ?? null,
+      avg_10_to_80_mins:
+        port.chargePortDetailsList?.[0]?.timeInMinutes ??
+        null
     },
 
     motor: {
-      power_kw: motor?.PowerKw ?? null,
-      torque_nm: motor?.MaxTorqueNm ?? null,
-      location: motor?.MotorLocation ?? null,
-      axle: motor?.AxleDrivenByMotor ?? null,
-      regen: motor?.SupportsRegenerativeBraking ?? null
+      power_kw: motor.powerKw ?? null,
+      torque_nm: motor.maxTorqueNm ?? null,
+      location: motor.motorLocation ?? null,
+      axle: motor.axleDrivenByMotor ?? null,
+      regen: motor.supportsRegenerativeBraking ?? null
     }
   };
 
@@ -270,6 +266,7 @@ if (ev) {
     axle_driven_by_motor: clean.ev.motor.axle
   };
 }
+
 
 
 
