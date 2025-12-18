@@ -196,32 +196,6 @@ function buildCleanSpec(apiResults) {
 }
 
 
-	// --------------------------------------------------
-// ELECTRIC VEHICLE
-// --------------------------------------------------
-  if (powertrain?.Type === "BEV") {
-	const battery = powertrain?.BatteryDetails || {};
-	const charging = powertrain?.ChargePortDetails || {};
-	const range = powertrain?.RangeDetails || {};
-
-	clean.ev = {
-	  powertrain_type: powertrain.Type,
-	  battery_total_kwh: battery?.TotalCapacityKwh,
-	  battery_usable_kwh: battery?.UsableCapacityKwh,
-	  wltp_range_miles: range?.WltpMiles,
-	  wltp_range_km: range?.WltpKm,
-	  ac_charge_kw: charging?.AcMaxKw,
-	  dc_charge_kw: charging?.DcMaxKw,
-	  charge_10_80_min: charging?.Charge10To80Min,
-	  battery_warranty_years: battery?.WarrantyYears,
-	  battery_warranty_miles: battery?.WarrantyMiles
-	};
-  }
-  
-  clean._meta = {
-    spec_version: 2,
-    generated_at: new Date().toISOString()
-  };
 
 
 // ------------------------------------------------------------
