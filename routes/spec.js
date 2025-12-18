@@ -174,18 +174,44 @@ function buildCleanSpec(apiResults) {
     const range = powertrain?.RangeDetails || {};
 
     clean.ev = {
-      powertrain_type: powertrain.Type,
+      powertrain_type: "BEV",
+
+      battery_chemistry: battery?.Chemistry,
       battery_total_kwh: battery?.TotalCapacityKwh,
       battery_usable_kwh: battery?.UsableCapacityKwh,
+
       wltp_range_miles: range?.WltpMiles,
       wltp_range_km: range?.WltpKm,
+
       ac_charge_kw: charging?.AcMaxKw,
       dc_charge_kw: charging?.DcMaxKw,
       charge_10_80_min: charging?.Charge10To80Min,
+
       battery_warranty_years: battery?.WarrantyYears,
       battery_warranty_miles: battery?.WarrantyMiles
     };
   }
+  
+  // -------------------------
+// HYBRID (PHEV / HEV)
+// -------------------------
+  if (
+    powertrain?.Type === "PHEV" ||
+    powertrain?.Type === "HEV" ||
+    powertrain?.Type === "MHEV"
+  ) {
+    const battery = powertrain?.BatteryDetails || {};
+    const range = powertrain?.RangeDetails || {};
+
+    clean.hybrid = {
+      powertrain_type: powertrain.Type,
+      hybrid_type: powertrain.Type,
+      battery_kwh: battery?.TotalCapacityKwh,
+      ev_range_miles: range?.ElectricOnlyMiles
+    };
+  }
+
+
 
   clean._meta = {
     spec_version: 2,
