@@ -310,6 +310,15 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
       cached.rowCount > 0
         ? cached.rows[0].spec_json
         : await fetchSpecDataFromAPI(vrmUpper);
+	console.log("──────── VEHICLE SPEC DEBUG ────────");
+    console.log("VRM:", vrmUpper);
+	console.log("SPEC SOURCE:", cached.rowCount > 0 ? "DATABASE" : "API");
+	console.log("TOP LEVEL KEYS:", Object.keys(spec || {}));
+	console.log("HAS TOWING:", !!spec?.towing, spec?.towing);
+	console.log("HAS EV:", !!spec?.ev, spec?.ev);
+	console.log("SPEC VERSION:", spec?._meta?.spec_version);
+	console.log("────────────────────────────────────");
+
 
     if (!spec) {
       await query("ROLLBACK");
