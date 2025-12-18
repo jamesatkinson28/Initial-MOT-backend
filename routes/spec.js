@@ -183,23 +183,24 @@ function buildCleanSpec(apiResults) {
 // -------------------------
 // ELECTRIC VEHICLE
 // -------------------------
-const hasEvData =
-  powertrain?.EvDetails ||
-  powertrain?.EvDetails?.BatteryDetailsList?.length > 0;
+const ev = powertrain?.ElectricVehicleDetails;
 
-if (hasEvData) {
-  const ev = powertrain.EvDetails || {};
+if (ev) {
 
-  const battery = ev.BatteryDetailsList?.[0] || {};
-  const motor = ev.MotorDetailsList?.[0] || {};
-  const port = ev.ChargePortDetailsList?.[0] || {};
+
+  const tech = ev.TechnicalDetails || {};
   const perf = ev.Performance || {};
+
+  const battery = tech.BatteryDetailsList?.[0] || {};
+  const motor = tech.MotorDetailsList?.[0] || {};
+  const port = tech.ChargePortDetailsList?.[0] || {};
+
 
   // -------------------------
   // RICH, NESTED EV DATA (SOURCE OF TRUTH)
   // -------------------------
   clean.ev = {
-    powertrain_type: ev.TechnicalDetails?.PowertrainType ?? "BEV",
+    powertrain_type: tech?.PowertrainType ?? "BEV",
 
     efficiency: {
       wh_per_mile: perf?.WhMile ?? null,
@@ -222,9 +223,11 @@ if (hasEvData) {
       dc_kw: perf?.MaxChargeInputPowerKw ?? null,
       port_type: port?.PortType ?? null,
       port_location: port?.LocationOnVehicle ?? null,
-      avg_10_to_80_mins:
-        port?.ChargeTimes?.AverageChargeTimes10To80Percent?.[0]?.TimeInMinutes ??
-        null
+	  avg_10_to_80_mins:
+	    port?.ChargeTimes?.AverageChargeTimes10To80Percent?.[0]?.TimeInMinutes ??
+	    port?.ChargePortDetailsList?.[0]?.TimeInMinutes ??
+	    null
+
     },
 
     motor: {
