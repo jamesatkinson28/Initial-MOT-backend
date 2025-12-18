@@ -34,13 +34,13 @@ function buildCleanSpec(apiResults) {
   const vd = apiResults?.VehicleDetails || {};
   const vId = vd.VehicleIdentification || {};
   const vTech = vd.DvlaTechnicalDetails || {};
-  const vStatus = vd.VehicleStatus || {};
 
   const model = apiResults?.ModelDetails || {};
   const mId = model.ModelIdentification || {};
   const dims = model.Dimensions || {};
   const weights = model.Weights || {};
   const body = model.BodyDetails || {};
+  const colour = apiResults?.VehicleHistory?.ColourDetails || {};
 
   const performance = model.Performance || {};
   const power = performance?.Power || {};
@@ -54,6 +54,7 @@ function buildCleanSpec(apiResults) {
 
   const powertrain = model.Powertrain || {};
   const ice = powertrain?.IceDetails || {};
+  const transmission = powertrain?.Transmission || {};
 
   let clean = {
     identity: {
@@ -67,7 +68,9 @@ function buildCleanSpec(apiResults) {
       seats: body.NumberOfSeats,
       wheelbase: body.WheelbaseType,
       axles: body.NumberOfAxles,
-      country_of_origin: mId.CountryOfOrigin
+      country_of_origin: mId.CountryOfOrigin,
+      original_colour: colour?.OriginalColour,
+      cab_type: body?.CabType
     },
 
     engine: {
@@ -82,7 +85,8 @@ function buildCleanSpec(apiResults) {
       valve_gear: ice?.ValveGear,
       fuel_type: vId.DvlaFuelType || powertrain.FuelType,
       engine_location: ice?.EngineLocation,
-      engine_description: ice?.EngineDescription
+      engine_description: ice?.EngineDescription,
+      engine_code: ice?.EngineCode || vTech?.EngineCode
     },
 
     performance: {
@@ -119,6 +123,11 @@ function buildCleanSpec(apiResults) {
       mass_in_service_kg: vTech?.MassInServiceKg
     },
 
+    drivetrain: {
+      drive_type: transmission?.DriveType,
+      driving_axle: transmission?.DrivingAxle
+    },
+
     safety: {
       ncap_rating: safety?.EuroNcap?.NcapStarRating,
       ncap_adult_percent: safety?.EuroNcap?.NcapAdultPercent,
@@ -137,8 +146,83 @@ function buildCleanSpec(apiResults) {
     images: null
   };
 
+  // -------------------------
+  // TOWING
+  // -------------------------
+  if (
+    weights?.GrossTrainWeightKg ||
+    weights?.MaxBrakedTrailerWeightKg ||
+    weights?.MaxUnbrakedTrailerWeightKg ||
+    weights?.GrossCombinedWeightKg
+  ) {
+    clean.towing = {
+      max_braked_kg: weights?.MaxBrakedTrailerWeightKg ?? 0,
+      max_unbraked_kg: weights?.MaxUnbrakedTrailerWeightKg ?? 0,
+      gross_train_weight_kg: weights?.GrossTrainWeightKg ?? null,
+      gross_combined_weight_kg: weights?.GrossCombinedWeightKg ?? null,
+      max_nose_weight_kg: weights?.MaxNoseWeightKg ?? null,
+      towbar_approved: (weights?.MaxBrakedTrailerWeightKg ?? 0) > 0
+    };
+  }
+
+  // -------------------------
+  // ELECTRIC VEHICLE
+  // -------------------------
+  if (powertrain?.Type === "BEV") {
+    const battery = powertrain?.BatteryDetails || {};
+    const charging = powertrain?.ChargePortDetails || {};
+    const range = powertrain?.RangeDetails || {};
+
+    clean.ev = {
+      powertrain_type: powertrain.Type,
+      battery_total_kwh: battery?.TotalCapacityKwh,
+      battery_usable_kwh: battery?.UsableCapacityKwh,
+      wltp_range_miles: range?.WltpMiles,
+      wltp_range_km: range?.WltpKm,
+      ac_charge_kw: charging?.AcMaxKw,
+      dc_charge_kw: charging?.DcMaxKw,
+      charge_10_80_min: charging?.Charge10To80Min,
+      battery_warranty_years: battery?.WarrantyYears,
+      battery_warranty_miles: battery?.WarrantyMiles
+    };
+  }
+
+  clean._meta = {
+    spec_version: 2,
+    generated_at: new Date().toISOString()
+  };
+
   return removeNulls(clean);
 }
+
+
+	// --------------------------------------------------
+// ELECTRIC VEHICLE
+// --------------------------------------------------
+  if (powertrain?.Type === "BEV") {
+	const battery = powertrain?.BatteryDetails || {};
+	const charging = powertrain?.ChargePortDetails || {};
+	const range = powertrain?.RangeDetails || {};
+
+	clean.ev = {
+	  powertrain_type: powertrain.Type,
+	  battery_total_kwh: battery?.TotalCapacityKwh,
+	  battery_usable_kwh: battery?.UsableCapacityKwh,
+	  wltp_range_miles: range?.WltpMiles,
+	  wltp_range_km: range?.WltpKm,
+	  ac_charge_kw: charging?.AcMaxKw,
+	  dc_charge_kw: charging?.DcMaxKw,
+	  charge_10_80_min: charging?.Charge10To80Min,
+	  battery_warranty_years: battery?.WarrantyYears,
+	  battery_warranty_miles: battery?.WarrantyMiles
+	};
+  }
+  
+  clean._meta = {
+    spec_version: 2,
+    generated_at: new Date().toISOString()
+  };
+
 
 // ------------------------------------------------------------
 // OPTIONAL IMAGE FETCHING (DISABLED)
