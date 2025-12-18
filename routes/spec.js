@@ -175,8 +175,6 @@ function buildCleanSpec(apiResults) {
       towbar_approved: (weights?.MaxBrakedTrailerWeightKg ?? 0) > 0
     };
   }
-
--------------------------
 // -------------------------
 // ELECTRIC VEHICLE
 // -------------------------
