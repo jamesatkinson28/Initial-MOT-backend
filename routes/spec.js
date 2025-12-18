@@ -188,62 +188,51 @@ const hasEvData =
   powertrain?.EvDetails?.BatteryDetailsList?.length > 0;
 
 if (hasEvData) {
-  const ev = powertrain?.EvDetails || {};
-  const battery = ev?.BatteryDetailsList?.[0] || {};
-  const motor = ev?.MotorDetailsList?.[0] || {};
-  const ports = ev?.ChargePortDetailsList || [];
-  const rangeCycle = ev?.RangeTestCycleList?.[0] || {};
-  const perf = ev?.Performance || {};
+  const ev = powertrain.EvDetails || {};
+
+  const battery = ev.BatteryDetailsList?.[0] || {};
+  const motor = ev.MotorDetailsList?.[0] || {};
+  const port = ev.ChargePortDetailsList?.[0] || {};
 
   clean.ev = {
-    powertrain_type: "BEV",
+    powertrain_type: ev.TechnicalDetails?.PowertrainType ?? "BEV",
 
-    // Battery
-    battery_chemistry: battery?.Chemistry,
-    battery_total_kwh: battery?.TotalCapacityKwh,
-    battery_usable_kwh: battery?.UsableCapacityKwh,
-    battery_voltage: battery?.Voltage,
-    battery_location: battery?.LocationOnVehicle,
-    battery_description: battery?.Description,
-    battery_warranty_months: battery?.ManufacturerWarrantyMonths,
-    battery_warranty_miles: battery?.ManufacturerWarrantyMiles,
-    battery_warranty_years: battery?.ManufacturerWarrantyMonths
-      ? Math.round(battery.ManufacturerWarrantyMonths / 12)
-      : null,
+    efficiency: {
+      wh_per_mile: performance?.WhMile ?? null,
+      real_range_miles: performance?.RangeFigures?.RealRangeMiles ?? null,
+      real_range_km: performance?.RangeFigures?.RealRangeKm ?? null,
+    },
 
-    // Range & efficiency
-    wltp_range_miles: rangeCycle?.CombinedRangeMiles,
-    wltp_range_km: rangeCycle?.CombinedRangeKm,
-    wh_per_mile: perf?.WhMile,
+    battery: {
+      total_kwh: battery.TotalCapacityKwh ?? null,
+      usable_kwh: battery.UsableCapacityKwh ?? null,
+      chemistry: battery.Chemistry ?? null,
+      voltage: battery.Voltage ?? null,
+      location: battery.LocationOnVehicle ?? null,
+      warranty_months: battery.ManufacturerWarrantyMonths ?? null,
+      warranty_miles: battery.ManufacturerWarrantyMiles ?? null,
+    },
 
-    // Charging summary
-    ac_charge_kw: Math.max(
-      ...ports
-        .filter(p => p.PortType?.toLowerCase().includes("ac"))
-        .map(p => p.MaxChargePowerKw || 0),
-      0
-    ),
+    charging: {
+      ac_kw: port.MaxChargePowerKw ?? null,
+      dc_kw: ev.Performance?.MaxChargeInputPowerKw ?? null,
+      port_type: port.PortType ?? null,
+      port_location: port.LocationOnVehicle ?? null,
+      avg_10_to_80_mins:
+        port.ChargeTimes?.AverageChargeTimes10To80Percent?.[0]?.TimeInMinutes ??
+        null,
+    },
 
-    dc_charge_kw: Math.max(
-      ...ports
-        .filter(p => p.PortType?.toLowerCase().includes("dc"))
-        .map(p => p.MaxChargePowerKw || 0),
-      0
-    ),
-
-    charge_ports: ports.map(p => ({
-      port_type: p.PortType,
-      location: p.LocationOnVehicle,
-      max_charge_kw: p.MaxChargePowerKw
-    })),
-
-    // Motor
-    motor_type: motor?.MotorType,
-    motor_location: motor?.MotorLocation,
-    axle_driven_by_motor: motor?.AxleDrivenByMotor,
-    supports_regen_braking: motor?.SupportsRegenerativeBraking
+    motor: {
+      power_kw: motor.PowerKw ?? null,
+      torque_nm: motor.MaxTorqueNm ?? null,
+      location: motor.MotorLocation ?? null,
+      axle: motor.AxleDrivenByMotor ?? null,
+      regen: motor.SupportsRegenerativeBraking ?? null,
+    },
   };
-} // ✅ <-- THIS BRACE WAS MISSING
+}
+
 
 
 // -------------------------
