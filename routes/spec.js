@@ -184,64 +184,60 @@ function buildCleanSpec(apiResults) {
 // -------------------------
 // ELECTRIC VEHICLE (EV)
 // -------------------------
-const ev = powertrain?.electricVehicleDetails;
+const ev = powertrain?.EvDetails;
 
 if (ev) {
-  const tech = ev.technicalDetails || {};
-  const perf = ev.performance || {};
+  const tech = ev.TechnicalDetails || {};
+  const perf = ev.Performance || {};
 
-  const battery = tech.batteryDetailsList?.[0] || {};
-  const motor = tech.motorDetailsList?.[0] || {};
-  const port = tech.chargePortDetailsList?.[0] || {};
+  const battery = tech.BatteryDetailsList?.[0] || {};
+  const motor = tech.MotorDetailsList?.[0] || {};
+  const port = tech.ChargePortDetailsList?.[0] || {};
 
-  // -------------------------
-  // RICH, NESTED EV DATA (SOURCE OF TRUTH)
-  // -------------------------
   clean.ev = {
-    powertrain_type: tech.powertrainType ?? "BEV",
+    powertrain_type: tech.PowertrainType ?? "BEV",
 
     efficiency: {
-      wh_per_mile: perf.whMile ?? null,
-      real_range_miles: perf.rangeFigures?.realRangeMiles ?? null,
-      real_range_km: perf.rangeFigures?.realRangeKm ?? null
+      wh_per_mile: perf.WhMile ?? null,
+      real_range_miles: perf.RangeFigures?.RealRangeMiles ?? null,
+      real_range_km: perf.RangeFigures?.RealRangeKm ?? null
     },
 
     battery: {
-      total_kwh: battery.totalCapacityKwh ?? null,
-      usable_kwh: battery.usableCapacityKwh ?? null,
-      chemistry: battery.chemistry ?? null,
-      voltage: battery.voltage ?? null,
-      location: battery.locationOnVehicle ?? null,
-      warranty_months: battery.manufacturerWarrantyMonths ?? null,
-      warranty_miles: battery.manufacturerWarrantyMiles ?? null
+      total_kwh: battery.TotalCapacityKwh ?? null,
+      usable_kwh: battery.UsableCapacityKwh ?? null,
+      chemistry: battery.Chemistry ?? null,
+      voltage: battery.Voltage ?? null,
+      location: battery.LocationOnVehicle ?? null,
+      warranty_months: battery.ManufacturerWarrantyMonths ?? null,
+      warranty_miles: battery.ManufacturerWarrantyMiles ?? null
     },
 
     charging: {
-      ac_kw: port.maxChargePowerKw ?? null,
-      dc_kw: perf.maxChargeInputPowerKw ?? null,
-      port_type: port.portType ?? null,
-      port_location: port.locationOnVehicle ?? null,
+      ac_kw: port.MaxChargePowerKw ?? null,
+      dc_kw: perf.MaxChargeInputPowerKw ?? null,
+      port_type: port.PortType ?? null,
+      port_location: port.LocationOnVehicle ?? null,
       avg_10_to_80_mins:
-        port.chargePortDetailsList?.[0]?.timeInMinutes ??
+        port.ChargePortDetailsList?.[0]?.TimeInMinutes ??
         null
     },
 
     motor: {
-      power_kw: motor.powerKw ?? null,
-      torque_nm: motor.maxTorqueNm ?? null,
-      location: motor.motorLocation ?? null,
-      axle: motor.axleDrivenByMotor ?? null,
-      regen: motor.supportsRegenerativeBraking ?? null
+      power_kw: motor.PowerKw ?? null,
+      torque_nm: motor.MaxTorqueNm ?? null,
+      location: motor.MotorLocation ?? null,
+      axle: motor.AxleDrivenByMotor ?? null,
+      regen: motor.SupportsRegenerativeBraking ?? null
     }
   };
 
   // -------------------------
-  // FLAT EV FIELDS (UI CONTRACT – DO NOT REMOVE)
+  // FLAT EV FIELDS (UI CONTRACT)
   // -------------------------
   clean.ev = {
     ...clean.ev,
 
-    // Battery (flat)
     battery_chemistry: clean.ev.battery.chemistry,
     battery_total_kwh: clean.ev.battery.total_kwh,
     battery_usable_kwh: clean.ev.battery.usable_kwh,
@@ -250,22 +246,20 @@ if (ev) {
       : null,
     battery_warranty_miles: clean.ev.battery.warranty_miles,
 
-    // Range & efficiency (flat)
     wltp_range_miles: clean.ev.efficiency.real_range_miles,
     wltp_range_km: clean.ev.efficiency.real_range_km,
     wh_per_mile: clean.ev.efficiency.wh_per_mile,
 
-    // Charging (flat)
     ac_charge_kw: clean.ev.charging.ac_kw,
     dc_charge_kw: clean.ev.charging.dc_kw,
     charge_10_80_min: clean.ev.charging.avg_10_to_80_mins,
 
-    // Motor (flat)
     motor_type: clean.ev.motor.power_kw ? "Electric Motor" : null,
     motor_location: clean.ev.motor.location,
     axle_driven_by_motor: clean.ev.motor.axle
   };
 }
+
 
 
 
