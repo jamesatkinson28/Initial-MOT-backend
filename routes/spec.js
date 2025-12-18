@@ -193,45 +193,81 @@ if (hasEvData) {
   const battery = ev.BatteryDetailsList?.[0] || {};
   const motor = ev.MotorDetailsList?.[0] || {};
   const port = ev.ChargePortDetailsList?.[0] || {};
+  const perf = ev.Performance || {};
 
+  // -------------------------
+  // RICH, NESTED EV DATA (SOURCE OF TRUTH)
+  // -------------------------
   clean.ev = {
     powertrain_type: ev.TechnicalDetails?.PowertrainType ?? "BEV",
 
     efficiency: {
-      wh_per_mile: performance?.WhMile ?? null,
-      real_range_miles: performance?.RangeFigures?.RealRangeMiles ?? null,
-      real_range_km: performance?.RangeFigures?.RealRangeKm ?? null,
+      wh_per_mile: perf?.WhMile ?? null,
+      real_range_miles: perf?.RangeFigures?.RealRangeMiles ?? null,
+      real_range_km: perf?.RangeFigures?.RealRangeKm ?? null
     },
 
     battery: {
-      total_kwh: battery.TotalCapacityKwh ?? null,
-      usable_kwh: battery.UsableCapacityKwh ?? null,
-      chemistry: battery.Chemistry ?? null,
-      voltage: battery.Voltage ?? null,
-      location: battery.LocationOnVehicle ?? null,
-      warranty_months: battery.ManufacturerWarrantyMonths ?? null,
-      warranty_miles: battery.ManufacturerWarrantyMiles ?? null,
+      total_kwh: battery?.TotalCapacityKwh ?? null,
+      usable_kwh: battery?.UsableCapacityKwh ?? null,
+      chemistry: battery?.Chemistry ?? null,
+      voltage: battery?.Voltage ?? null,
+      location: battery?.LocationOnVehicle ?? null,
+      warranty_months: battery?.ManufacturerWarrantyMonths ?? null,
+      warranty_miles: battery?.ManufacturerWarrantyMiles ?? null
     },
 
     charging: {
-      ac_kw: port.MaxChargePowerKw ?? null,
-      dc_kw: ev.Performance?.MaxChargeInputPowerKw ?? null,
-      port_type: port.PortType ?? null,
-      port_location: port.LocationOnVehicle ?? null,
+      ac_kw: port?.MaxChargePowerKw ?? null,
+      dc_kw: perf?.MaxChargeInputPowerKw ?? null,
+      port_type: port?.PortType ?? null,
+      port_location: port?.LocationOnVehicle ?? null,
       avg_10_to_80_mins:
-        port.ChargeTimes?.AverageChargeTimes10To80Percent?.[0]?.TimeInMinutes ??
-        null,
+        port?.ChargeTimes?.AverageChargeTimes10To80Percent?.[0]?.TimeInMinutes ??
+        null
     },
 
     motor: {
-      power_kw: motor.PowerKw ?? null,
-      torque_nm: motor.MaxTorqueNm ?? null,
-      location: motor.MotorLocation ?? null,
-      axle: motor.AxleDrivenByMotor ?? null,
-      regen: motor.SupportsRegenerativeBraking ?? null,
-    },
+      power_kw: motor?.PowerKw ?? null,
+      torque_nm: motor?.MaxTorqueNm ?? null,
+      location: motor?.MotorLocation ?? null,
+      axle: motor?.AxleDrivenByMotor ?? null,
+      regen: motor?.SupportsRegenerativeBraking ?? null
+    }
+  };
+
+  // -------------------------
+  // FLAT EV FIELDS (UI CONTRACT – DO NOT REMOVE)
+  // -------------------------
+  clean.ev = {
+    ...clean.ev,
+
+    // Battery (flat)
+    battery_chemistry: clean.ev.battery.chemistry,
+    battery_total_kwh: clean.ev.battery.total_kwh,
+    battery_usable_kwh: clean.ev.battery.usable_kwh,
+    battery_warranty_years: clean.ev.battery.warranty_months
+      ? Math.round(clean.ev.battery.warranty_months / 12)
+      : null,
+    battery_warranty_miles: clean.ev.battery.warranty_miles,
+
+    // Range & efficiency (flat)
+    wltp_range_miles: clean.ev.efficiency.real_range_miles,
+    wltp_range_km: clean.ev.efficiency.real_range_km,
+    wh_per_mile: clean.ev.efficiency.wh_per_mile,
+
+    // Charging (flat)
+    ac_charge_kw: clean.ev.charging.ac_kw,
+    dc_charge_kw: clean.ev.charging.dc_kw,
+    charge_10_80_min: clean.ev.charging.avg_10_to_80_mins,
+
+    // Motor (flat)
+    motor_type: clean.ev.motor.power_kw ? "Electric Motor" : null,
+    motor_location: clean.ev.motor.location,
+    axle_driven_by_motor: clean.ev.motor.axle
   };
 }
+
 
 
 
