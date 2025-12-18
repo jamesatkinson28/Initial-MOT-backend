@@ -57,6 +57,11 @@ function buildCleanSpec(apiResults) {
   const transmission = powertrain?.Transmission || {};
 
   let clean = {
+	_meta: {
+      generated_at: new Date().toISOString(),
+      spec_version: 2
+    },
+	
     identity: {
       vrm: vId.Vrm,
       make: mId.Make || vId.DvlaMake,
@@ -178,7 +183,11 @@ function buildCleanSpec(apiResults) {
 // -------------------------
 // ELECTRIC VEHICLE
 // -------------------------
-if (powertrain?.Type === "BEV") {
+const hasEvData =
+  powertrain?.EvDetails ||
+  powertrain?.EvDetails?.BatteryDetailsList?.length > 0;
+
+if (hasEvData) {
   const ev = powertrain?.EvDetails || {};
   const battery = ev?.BatteryDetailsList?.[0] || {};
   const motor = ev?.MotorDetailsList?.[0] || {};
