@@ -176,9 +176,10 @@ function buildCleanSpec(apiResults) {
     };
   }
 
-  // -------------------------
-  // ELECTRIC VEHICLE
-  // -------------------------
+-------------------------
+// -------------------------
+// ELECTRIC VEHICLE
+// -------------------------
 if (powertrain?.Type === "BEV") {
   const ev = powertrain?.EvDetails || {};
   const battery = ev?.BatteryDetailsList?.[0] || {};
@@ -187,82 +188,76 @@ if (powertrain?.Type === "BEV") {
   const rangeCycle = ev?.RangeTestCycleList?.[0] || {};
   const perf = ev?.Performance || {};
 
-	clean.ev = {
-	  powertrain_type: "BEV",
+  clean.ev = {
+    powertrain_type: "BEV",
 
-	  // Battery
-	  battery_chemistry: battery?.Chemistry,
-	  battery_total_kwh: battery?.TotalCapacityKwh,
-	  battery_usable_kwh: battery?.UsableCapacityKwh,
-	  battery_voltage: battery?.Voltage,
-	  battery_location: battery?.LocationOnVehicle,
-	  battery_description: battery?.Description,
-	  battery_warranty_months: battery?.ManufacturerWarrantyMonths,
-	  battery_warranty_miles: battery?.ManufacturerWarrantyMiles,
-	  battery_warranty_years: battery?.ManufacturerWarrantyMonths
-		? Math.round(battery.ManufacturerWarrantyMonths / 12)
-		: null,
+    // Battery
+    battery_chemistry: battery?.Chemistry,
+    battery_total_kwh: battery?.TotalCapacityKwh,
+    battery_usable_kwh: battery?.UsableCapacityKwh,
+    battery_voltage: battery?.Voltage,
+    battery_location: battery?.LocationOnVehicle,
+    battery_description: battery?.Description,
+    battery_warranty_months: battery?.ManufacturerWarrantyMonths,
+    battery_warranty_miles: battery?.ManufacturerWarrantyMiles,
+    battery_warranty_years: battery?.ManufacturerWarrantyMonths
+      ? Math.round(battery.ManufacturerWarrantyMonths / 12)
+      : null,
 
-	  // Range & efficiency
-	  wltp_range_miles: rangeCycle?.CombinedRangeMiles,
-	  wltp_range_km: rangeCycle?.CombinedRangeKm,
-	  wh_per_mile: perf?.WhMile,
+    // Range & efficiency
+    wltp_range_miles: rangeCycle?.CombinedRangeMiles,
+    wltp_range_km: rangeCycle?.CombinedRangeKm,
+    wh_per_mile: perf?.WhMile,
 
-	  // Charging summary (for UI)
-	  ac_charge_kw: Math.max(
-		...ports
-		  .filter(p => p.PortType?.toLowerCase().includes("ac"))
-		  .map(p => p.MaxChargePowerKw || 0),
-		0
-	  ),
+    // Charging summary
+    ac_charge_kw: Math.max(
+      ...ports
+        .filter(p => p.PortType?.toLowerCase().includes("ac"))
+        .map(p => p.MaxChargePowerKw || 0),
+      0
+    ),
 
-	  dc_charge_kw: Math.max(
-		...ports
-		  .filter(p => p.PortType?.toLowerCase().includes("dc"))
-		  .map(p => p.MaxChargePowerKw || 0),
-		0
-	  ),
+    dc_charge_kw: Math.max(
+      ...ports
+        .filter(p => p.PortType?.toLowerCase().includes("dc"))
+        .map(p => p.MaxChargePowerKw || 0),
+      0
+    ),
 
-	  charge_ports: ports.map(p => ({
-		port_type: p.PortType,
-		location: p.LocationOnVehicle,
-		max_charge_kw: p.MaxChargePowerKw
-	  })),
+    charge_ports: ports.map(p => ({
+      port_type: p.PortType,
+      location: p.LocationOnVehicle,
+      max_charge_kw: p.MaxChargePowerKw
+    })),
 
-	  // Motor
-	  motor_type: motor?.MotorType,
-	  motor_location: motor?.MotorLocation,
-	  axle_driven_by_motor: motor?.AxleDrivenByMotor,
-	  supports_regen_braking: motor?.SupportsRegenerativeBraking
-	};
-
-
-  
-  // -------------------------
-// HYBRID (PHEV / HEV)
-// -------------------------
-  if (
-    powertrain?.Type === "PHEV" ||
-    powertrain?.Type === "HEV" ||
-    powertrain?.Type === "MHEV"
-  ) {
-    const battery = powertrain?.BatteryDetails || {};
-    const range = powertrain?.RangeDetails || {};
-
-    clean.hybrid = {
-      powertrain_type: powertrain.Type,
-      hybrid_type: powertrain.Type,
-      battery_kwh: battery?.TotalCapacityKwh,
-      ev_range_miles: range?.ElectricOnlyMiles
-    };
-  }
-
-
-
-  clean._meta = {
-    spec_version: 2,
-    generated_at: new Date().toISOString()
+    // Motor
+    motor_type: motor?.MotorType,
+    motor_location: motor?.MotorLocation,
+    axle_driven_by_motor: motor?.AxleDrivenByMotor,
+    supports_regen_braking: motor?.SupportsRegenerativeBraking
   };
+} // ✅ <-- THIS BRACE WAS MISSING
+
+
+// -------------------------
+// HYBRID (PHEV / HEV / MHEV)
+// -------------------------
+if (
+  powertrain?.Type === "PHEV" ||
+  powertrain?.Type === "HEV" ||
+  powertrain?.Type === "MHEV"
+) {
+  const battery = powertrain?.BatteryDetails || {};
+  const range = powertrain?.RangeDetails || {};
+
+  clean.hybrid = {
+    powertrain_type: powertrain.Type,
+    hybrid_type: powertrain.Type,
+    battery_kwh: battery?.TotalCapacityKwh,
+    ev_range_miles: range?.ElectricOnlyMiles
+  };
+}
+
 
   return removeNulls(clean);
 }
