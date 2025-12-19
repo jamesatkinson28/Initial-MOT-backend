@@ -403,10 +403,23 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
       [vrmUpper]
     );
 
-    let spec =
-      cached.rowCount > 0
-        ? cached.rows[0].spec_json
-        : await fetchSpecDataFromAPI(vrmUpper);
+	let spec;
+
+	if (cached.rowCount > 0) {
+	  spec = cached.rows[0].spec_json;
+
+	  // 🔄 Auto-upgrade EV specs missing new fields
+	  const needsUpgrade =
+		(spec.engine?.fuel_type === "ELECTRICITY" && !spec.ev?.miles_per_kwh) ||
+		(spec.ev && !spec.ev.wltp_range_miles);
+
+	  if (needsUpgrade) {
+		spec = await fetchSpecDataFromAPI(vrmUpper);
+	  }
+	} else {
+	  spec = await fetchSpecDataFromAPI(vrmUpper);
+	}
+
 	console.log("──────── VEHICLE SPEC DEBUG ────────");
     console.log("VRM:", vrmUpper);
 	console.log("SPEC SOURCE:", cached.rowCount > 0 ? "DATABASE" : "API");
