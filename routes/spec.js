@@ -249,6 +249,10 @@ if (ev) {
     wltp_range_miles: clean.ev.efficiency.real_range_miles,
     wltp_range_km: clean.ev.efficiency.real_range_km,
     wh_per_mile: clean.ev.efficiency.wh_per_mile,
+	
+	miles_per_kwh: clean.ev.efficiency.wh_per_mile
+      ? Number((1000 / clean.ev.efficiency.wh_per_mile).toFixed(2))
+      : null,
 
     ac_charge_kw: clean.ev.charging.ac_kw,
     dc_charge_kw: clean.ev.charging.dc_kw,
