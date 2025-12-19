@@ -163,24 +163,38 @@ function buildCleanSpec(apiResults) {
     images: null
   };
 
-  // -------------------------
-  // TOWING
-  // -------------------------
-  if (
-    weights?.GrossTrainWeightKg ||
-    weights?.MaxBrakedTrailerWeightKg ||
-    weights?.MaxUnbrakedTrailerWeightKg ||
-    weights?.GrossCombinedWeightKg
-  ) {
-    clean.towing = {
-      max_braked_kg: weights?.MaxBrakedTrailerWeightKg ?? 0,
-      max_unbraked_kg: weights?.MaxUnbrakedTrailerWeightKg ?? 0,
-      gross_train_weight_kg: weights?.GrossTrainWeightKg ?? null,
-      gross_combined_weight_kg: weights?.GrossCombinedWeightKg ?? null,
-      max_nose_weight_kg: weights?.MaxNoseWeightKg ?? null,
-      towbar_approved: (weights?.MaxBrakedTrailerWeightKg ?? 0) > 0
-    };
-  }
+// -------------------------
+// TOWING (Weights + DVLA fallback)
+// -------------------------
+const maxBraked =
+  weights?.MaxBrakedTrailerWeightKg ??
+  vTech?.MaxPermissibleBrakedTrailerMassKg ??
+  0;
+
+const maxUnbraked =
+  weights?.MaxUnbrakedTrailerWeightKg ??
+  vTech?.MaxPermissibleUnbrakedTrailerMassKg ??
+  0;
+
+if (
+  weights?.GrossTrainWeightKg ||
+  weights?.GrossCombinedWeightKg ||
+  maxBraked > 0 ||
+  maxUnbraked > 0
+) {
+  clean.towing = {
+    max_braked_kg: maxBraked,
+    max_unbraked_kg: maxUnbraked,
+    gross_train_weight_kg:
+      weights?.GrossTrainWeightKg ?? null,
+    gross_combined_weight_kg:
+      weights?.GrossCombinedWeightKg ?? null,
+    max_nose_weight_kg:
+      weights?.MaxNoseWeightKg ?? null,
+    towbar_approved: maxBraked > 0
+  };
+}
+
 // -------------------------
 // ELECTRIC VEHICLE (EV)
 // -------------------------
