@@ -27,6 +27,23 @@ router.post("/diagnose/analyse", authRequired, async (req, res) => {
       recentServices,   // optional array
       motAdvisories,    // optional array of strings
     } = req.body || {};
+	
+	console.log("DIAGNOSE CONTEXT RECEIVED", {
+	  vehicleLabel,
+	  vrm,
+	  mileage,
+	  vehicleAgeYears,
+	  engine,
+	  fuelType,
+	  symptom,
+	  recentServicesCount: Array.isArray(recentServices)
+		? recentServices.length
+		: 0,
+	  motAdvisoriesCount: Array.isArray(motAdvisories)
+		? motAdvisories.length
+		: 0,
+	});
+
 
     if (!symptom || typeof symptom !== "string") {
       return res.status(400).json({ error: "Missing symptom description" });
