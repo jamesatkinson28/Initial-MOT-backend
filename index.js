@@ -34,6 +34,7 @@ import refreshRoutes from "./routes/refresh.js";
 import motInsightAi from "./routes/motInsightAi.js";
 import motExplainRoutes from "./routes/motExplain.js";
 import stripeWebhook from "./routes/stripeWebhook.js";
+import diagnoseAi from "./routes/diagnoseAi.js";
 
 // ==================================
 // STRIPE WEBHOOK — MUST COME BEFORE express.json()
@@ -128,6 +129,7 @@ app.use("/api/auth", refreshRoutes);
 app.use("/api", motInsightAi);
 app.use("/api", motExplainRoutes);
 app.use("/api", stripeWebhook);
+app.use("/api", diagnoseAi);
 
 // ==================================
 // DATABASE TEST ENDPOINT
