@@ -191,28 +191,7 @@ console.log(
     
 
     // 🧹 Defensive sanitising (same philosophy as MOT insight)
-    return res.json({ raw: text });
-      likely_causes: Array.isArray(data.likely_causes)
-        ? data.likely_causes.slice(0, 4)
-        : [],
-      urgency:
-        data.urgency === "red" ||
-        data.urgency === "amber" ||
-        data.urgency === "green"
-          ? data.urgency
-          : "amber",
-      advice: Array.isArray(data.advice) ? data.advice.slice(0, 4) : [],
-      estimated_cost:
-        typeof data.estimated_cost === "string"
-          ? data.estimated_cost
-          : "£0 – £300",
-      notes: typeof data.notes === "string" ? data.notes : "",
-    });
-
-  } catch (e) {
-    console.log("diagnose/analyse error", e);
-    return res.status(500).json({ error: "AI failed" });
-  }
-});
+    // TEMP: return raw AI output for inspection
+	return res.json({ raw: text });
 
 export default router;
