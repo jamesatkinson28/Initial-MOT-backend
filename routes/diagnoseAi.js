@@ -188,10 +188,10 @@ console.log(
     const text = completion.choices?.[0]?.message?.content || "{}";
 	console.log("DIAGNOSE AI RESPONSE", text);
 
-    const data = JSON.parse(text);
+    
 
     // 🧹 Defensive sanitising (same philosophy as MOT insight)
-    return res.json({
+    return res.json({ raw: text });
       likely_causes: Array.isArray(data.likely_causes)
         ? data.likely_causes.slice(0, 4)
         : [],
