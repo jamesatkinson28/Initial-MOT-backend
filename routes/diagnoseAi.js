@@ -185,6 +185,7 @@ console.log(
     }
 
     const text = completion.choices?.[0]?.message?.content || "{}";
+	console.log("DIAGNOSE AI RESPONSE", aiText);
     const data = JSON.parse(text);
 
     // 🧹 Defensive sanitising (same philosophy as MOT insight)
