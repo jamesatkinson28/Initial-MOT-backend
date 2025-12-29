@@ -56,7 +56,7 @@ router.post("/diagnose/analyse", authRequired, async (req, res) => {
       symptom: symptom.slice(0, 120),
     });
 
-    const prompt = `
+	const prompt = `
 You are GarageGPT, a professional UK automotive diagnostic assistant with the expertise of a senior technician (20+ years).
 
 Your task is to analyse a user-reported vehicle problem and return a structured, cautious diagnosis suitable for a consumer mobile app.
@@ -65,21 +65,25 @@ Do NOT claim certainty. Do NOT ask follow-up questions. Do NOT give unsafe advic
 ────────────────────────
 VEHICLE CONTEXT (may be incomplete)
 ────────────────────────
-Vehicle: {{vehicleLabel}}
-VRM: {{vrm}}
-Age (years): {{vehicleAgeYears}}
-Engine: {{engine}}
-Fuel type: {{fuelType}}   (petrol | diesel | hybrid | electric | unknown)
-Mileage: {{mileage}}
+Vehicle: ${vehicleLabel || "Unknown"}
+VRM: ${vrm || "Unknown"}
+Age (years): ${vehicleAgeYears ?? "Unknown"}
+Engine: ${engine || "Unknown"}
+Fuel type: ${fuelType || "Unknown"}   (petrol | diesel | hybrid | electric | unknown)
+Mileage: ${mileage ?? "Unknown"}
 
 Recent service history (optional):
-{{recentServices}}
+${Array.isArray(recentServices) && recentServices.length
+  ? recentServices.map(s => `- ${s}`).join("\n")
+  : "None recorded"}
 
 MOT advisories (optional):
-{{motAdvisories}}
+${Array.isArray(motAdvisories) && motAdvisories.length
+  ? motAdvisories.map(a => `- ${a}`).join("\n")
+  : "None recorded"}
 
 User-reported symptoms:
-"{{symptom}}"
+"${symptom}"
 
 ────────────────────────
 DIAGNOSTIC REASONING RULES
