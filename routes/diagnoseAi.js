@@ -9,49 +9,51 @@ const router = express.Router();
  * POST /diagnose/analyse
  * AI-powered vehicle diagnosis based on symptoms + context
  */
-router.post("/diagnose/analyse", (req, res, next) => {
-  console.log("🔥 HIT diagnose/analyse");
-  next();
-}, authRequired, async (req, res) => {
-router.post("/diagnose/analyse", async (req, res) => {
-  try {
-    // 🔒 Premium gate (same as MOT insight)
-    if (!req.user?.premium) {
-      return res.status(403).json({ error: "Premium required" });
-    }
+router.post(
+  "/diagnose/analyse",
+  (req, res, next) => {
+    console.log("🔥 HIT diagnose/analyse");
+    next();
+  },
+  authRequired,
+  async (req, res) => {
+    try {
+      // 🔒 Premium gate
+      if (!req.user?.premium) {
+        return res.status(403).json({ error: "Premium required" });
+      }
 
-    const {
-      vehicleLabel,
-      vrm,
-      mileage,
-      vehicleAgeYears,
-      engine,
-      fuelType,
-      symptom,          // REQUIRED (free text)
-      recentServices,   // optional array
-      motAdvisories,    // optional array of strings
-    } = req.body || {};
-	
-	console.log("DIAGNOSE CONTEXT RECEIVED", {
-	  vehicleLabel,
-	  vrm,
-	  mileage,
-	  vehicleAgeYears,
-	  engine,
-	  fuelType,
-	  symptom,
-	  recentServicesCount: Array.isArray(recentServices)
-		? recentServices.length
-		: 0,
-	  motAdvisoriesCount: Array.isArray(motAdvisories)
-		? motAdvisories.length
-		: 0,
-	});
+      const {
+        vehicleLabel,
+        vrm,
+        mileage,
+        vehicleAgeYears,
+        engine,
+        fuelType,
+        symptom,
+        recentServices,
+        motAdvisories,
+      } = req.body || {};
 
+      console.log("DIAGNOSE CONTEXT RECEIVED", {
+        vehicleLabel,
+        vrm,
+        mileage,
+        vehicleAgeYears,
+        engine,
+        fuelType,
+        symptom,
+        recentServicesCount: Array.isArray(recentServices)
+          ? recentServices.length
+          : 0,
+        motAdvisoriesCount: Array.isArray(motAdvisories)
+          ? motAdvisories.length
+          : 0,
+      });
 
-    if (!symptom || typeof symptom !== "string") {
-      return res.status(400).json({ error: "Missing symptom description" });
-    }
+      if (!symptom || typeof symptom !== "string") {
+        return res.status(400).json({ error: "Missing symptom description" });
+      }
 
 	const prompt = `
 You are GarageGPT, a professional UK automotive diagnostic assistant with the expertise of a senior technician (20+ years).
@@ -185,21 +187,18 @@ console.log(
       });
     }
 
-    const text = completion.choices?.[0]?.message?.content || "{}";
-	console.log("DIAGNOSE AI RESPONSE", text);
+      const text = completion.choices?.[0]?.message?.content || "{}";
+      console.log("DIAGNOSE AI RESPONSE", text);
 
-    
+      // TEMP: return raw AI output
+      return res.json({ raw: text });
 
-    // 🧹 Defensive sanitising (same philosophy as MOT insight)
-    // TEMP: return raw AI output for inspection
-	    // TEMP: return raw AI output for inspection
-    return res.json({ raw: text });
-
-  } catch (err) {
-    console.error("DIAGNOSE BACKEND ERROR", err);
-    return res.status(500).json({ error: "AI failed" });
+    } catch (err) {
+      console.error("DIAGNOSE BACKEND ERROR", err);
+      return res.status(500).json({ error: "AI failed" });
+    }
   }
-});
+);
 
 export default router;
 
