@@ -93,6 +93,7 @@ function buildCleanSpec(apiResults) {
       engine_location: ice?.EngineLocation,
       engine_description: ice?.EngineDescription,
       engine_code: ice?.EngineCode || vTech?.EngineCode
+	  engine_number: ice?.EngineNumber || vTech?.EngineNumber || null,
     },
 
     performance: {
