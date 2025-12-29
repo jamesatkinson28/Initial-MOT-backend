@@ -33,6 +33,7 @@ router.post("/diagnose/analyse", authRequired, async (req, res) => {
 	  vrm,
 	  mileage,
 	  vehicleAgeYears,
+	  aspiration,
 	  engine,
 	  fuelType,
 	  symptom,
@@ -48,13 +49,6 @@ router.post("/diagnose/analyse", authRequired, async (req, res) => {
     if (!symptom || typeof symptom !== "string") {
       return res.status(400).json({ error: "Missing symptom description" });
     }
-
-    console.log("DIAGNOSE_AI payload:", {
-      vrm,
-      vehicleLabel,
-      mileage,
-      symptom: symptom.slice(0, 120),
-    });
 
 	const prompt = `
 You are GarageGPT, a professional UK automotive diagnostic assistant with the expertise of a senior technician (20+ years).
@@ -158,6 +152,11 @@ IMPORTANT
 - If information is limited, state this briefly in "notes".
 
 `.trim();
+
+console.log(
+  "DIAGNOSE PROMPT PREVIEW",
+  prompt.split("\n").slice(0, 25).join("\n")
+);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
