@@ -188,17 +188,51 @@ console.log(
     }
 
       const text = completion.choices?.[0]?.message?.content || "{}";
-      console.log("DIAGNOSE AI RESPONSE", text);
+		console.log("DIAGNOSE AI RESPONSE", text);
 
-      // TEMP: return raw AI output
-      return res.json({ raw: text });
+		let data;
+		try {
+		  data = JSON.parse(text);
+		} catch (e) {
+		  console.error("DIAGNOSE JSON PARSE FAILED", text);
+		  data = {};
+		}
 
-    } catch (err) {
-      console.error("DIAGNOSE BACKEND ERROR", err);
-      return res.status(500).json({ error: "AI failed" });
-    }
-  }
-);
+		// ✅ HARD GUARANTEES — frontend can trust this shape
+		return res.json({
+		  likely_causes: Array.isArray(data.likely_causes)
+			? data.likely_causes.slice(0, 5)
+			: [],
+
+		  advice: Array.isArray(data.advice)
+			? data.advice.slice(0, 6)
+			: [],
+
+		  urgency:
+			data.urgency === "red" ||
+			data.urgency === "amber" ||
+			data.urgency === "green"
+			  ? data.urgency
+			  : "amber",
+
+		  estimated_cost:
+			typeof data.estimated_cost === "string"
+			  ? data.estimated_cost
+			  : "£0 – £300",
+
+		  notes:
+			typeof data.notes === "string"
+			  ? data.notes
+			  : "Based on the information provided, this assessment is indicative and further inspection may be required.",
+		});
+			} catch (err) {
+			  console.error("DIAGNOSE BACKEND ERROR", err);
+			  return res.status(500).json({ error: "AI failed" });
+			}
+		  }
+		);
+
+
 
 export default router;
 
