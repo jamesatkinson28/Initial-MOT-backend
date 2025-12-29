@@ -10,6 +10,7 @@ const router = express.Router();
  * AI-powered vehicle diagnosis based on symptoms + context
  */
 router.post("/diagnose/analyse", authRequired, async (req, res) => {
+  console.log("DIAGNOSE ROUTE HIT");
   try {
     // 🔒 Premium gate (same as MOT insight)
     if (!req.user?.premium) {
