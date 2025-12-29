@@ -23,6 +23,7 @@ router.post("/diagnose/analyse", authRequired, async (req, res) => {
       vehicleAgeYears,
       engine,
       fuelType,
+	  aspiration,
       symptom,          // REQUIRED (free text)
       recentServices,   // optional array
       motAdvisories,    // optional array of strings
@@ -64,6 +65,7 @@ VRM: ${vrm || "Unknown"}
 Age (years): ${vehicleAgeYears ?? "Unknown"}
 Engine: ${engine || "Unknown"}
 Fuel type: ${fuelType || "Unknown"}   (petrol | diesel | hybrid | electric | unknown)
+Aspiration: ${aspiration || "Unknown"}   (turbocharged | naturally aspirated | supercharged | unknown)
 Mileage: ${mileage ?? "Unknown"}
 
 Recent service history (optional):
