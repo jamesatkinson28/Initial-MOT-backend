@@ -192,6 +192,14 @@ console.log(
 
     // 🧹 Defensive sanitising (same philosophy as MOT insight)
     // TEMP: return raw AI output for inspection
-	return res.json({ raw: text });
+	    // TEMP: return raw AI output for inspection
+    return res.json({ raw: text });
+
+  } catch (err) {
+    console.error("DIAGNOSE BACKEND ERROR", err);
+    return res.status(500).json({ error: "AI failed" });
+  }
+});
 
 export default router;
+
