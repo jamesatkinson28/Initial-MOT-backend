@@ -10,7 +10,6 @@ const router = express.Router();
  * AI-powered vehicle diagnosis based on symptoms + context
  */
 router.post("/diagnose/analyse", authRequired, async (req, res) => {
-  console.log("DIAGNOSE ROUTE HIT");
   try {
     // 🔒 Premium gate (same as MOT insight)
     if (!req.user?.premium) {
@@ -24,7 +23,6 @@ router.post("/diagnose/analyse", authRequired, async (req, res) => {
       vehicleAgeYears,
       engine,
       fuelType,
-	  aspiration,
       symptom,          // REQUIRED (free text)
       recentServices,   // optional array
       motAdvisories,    // optional array of strings
@@ -35,7 +33,6 @@ router.post("/diagnose/analyse", authRequired, async (req, res) => {
 	  vrm,
 	  mileage,
 	  vehicleAgeYears,
-	  aspiration,
 	  engine,
 	  fuelType,
 	  symptom,
@@ -66,7 +63,6 @@ VRM: ${vrm || "Unknown"}
 Age (years): ${vehicleAgeYears ?? "Unknown"}
 Engine: ${engine || "Unknown"}
 Fuel type: ${fuelType || "Unknown"}   (petrol | diesel | hybrid | electric | unknown)
-Aspiration: ${aspiration || "Unknown"}   (turbocharged | naturally aspirated | supercharged | unknown)
 Mileage: ${mileage ?? "Unknown"}
 
 Recent service history (optional):
