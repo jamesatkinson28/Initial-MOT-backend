@@ -30,6 +30,7 @@ router.post(
         vehicleAgeYears,
         engine,
         fuelType,
+		aspiration,
         symptom,
         recentServices,
         motAdvisories,
