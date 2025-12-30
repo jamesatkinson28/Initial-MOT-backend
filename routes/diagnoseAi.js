@@ -55,6 +55,19 @@ router.post(
       if (!symptom || typeof symptom !== "string") {
         return res.status(400).json({ error: "Missing symptom description" });
       }
+	  
+	  const formattedServices = Array.isArray(recentServices)
+	    ? recentServices.map(s => {
+		    const title = s.title || s.type || "Service";
+		    const mileage = s.mileage ? `${s.mileage} miles` : "unknown mileage";
+		    const date = s.date
+			  ? new Date(s.date).toLocaleDateString("en-GB")
+			 : null;
+
+		    return `${title}${date ? ` on ${date}` : ""} (${mileage})`;
+		  })
+	    : [];
+
 
 const prompt = `
 You are GarageGPT, a professional UK automotive diagnostic assistant with the expertise of a senior technician (20+ years).
@@ -81,8 +94,8 @@ Aspiration: ${aspiration || "Unknown"}   (turbocharged | naturally aspirated | s
 Mileage: ${mileage ?? "Unknown"}
 
 Recent service history (optional):
-${Array.isArray(recentServices) && recentServices.length
-  ? recentServices.map(s => `- ${s}`).join("\n")
+${formattedServices.length
+  ? formattedServices.map(s => `- ${s}`).join("\n")
   : "None recorded"}
 
 MOT advisories (optional):
