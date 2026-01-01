@@ -124,6 +124,10 @@ If emissions-related modifications or previous engine work are mentioned, consid
 - Thermal expansion noises from altered exhaust or turbo components
 Do NOT assume legality or illegality; diagnose based on mechanical behaviour only.
 
+If a component has been recently replaced, rebuilt, or serviced, you MUST reduce confidence that simple wear is the cause.
+Only assign "medium" confidence if symptoms strongly indicate installation, sealing, calibration, or secondary system issues.
+Otherwise, assign "low" confidence and prioritise related systems (breather, oil control, turbo drainage, sensors, or residual effects).
+
 ────────────────────────
 MODIFIED OR NON-STANDARD VEHICLES
 ────────────────────────
