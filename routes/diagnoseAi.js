@@ -14,6 +14,36 @@ function escalateUrgency(aiUrgency, minUrgency) {
     : aiUrgency;
 }
 
+function getUrgencyReason(minUrgency, warningLights = []) {
+  if (!minUrgency || !Array.isArray(warningLights) || warningLights.length === 0) {
+    return null;
+  }
+
+  const critical = [
+    "Oil pressure",
+    "Engine temp",
+    "Brake warning",
+    "Battery / charging",
+  ];
+
+  const safety = [
+    "Engine light",
+    "DPF / emissions",
+    "Glow plug",
+    "ABS",
+    "Traction control",
+  ];
+
+  const matched =
+    minUrgency === "red"
+      ? warningLights.filter(l => critical.includes(l))
+      : warningLights.filter(l => safety.includes(l));
+
+  if (matched.length === 0) return null;
+
+  return `Urgency increased due to reported ${matched.join(", ")} warning light${matched.length > 1 ? "s" : ""}.`;
+}
+
 
 const router = express.Router();
 
@@ -274,6 +304,13 @@ console.log(
 		  data.urgency,
 		  minUrgency
 		);
+		
+		const urgencyReason = getUrgencyReason(minUrgency, warningLights);
+
+		if (urgencyReason) {
+		  data.urgency_reason = urgencyReason;
+		}
+
 
 		console.log("FINAL URGENCY", {
 		  ai: data.urgency,
