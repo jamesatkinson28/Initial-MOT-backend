@@ -35,30 +35,6 @@ router.post(
         recentServices,
         motAdvisories,
       } = req.body || {};
-	  
-	  console.log("DIAGNOSE RAW SERVICE HISTORY:", {
-	    type: typeof recentServices,
-	    isArray: Array.isArray(recentServices),
-	    count: Array.isArray(recentServices) ? recentServices.length : 0,
-	    services: recentServices,
-	  });
-
-
-      console.log("DIAGNOSE CONTEXT RECEIVED", {
-        vehicleLabel,
-        vrm,
-        mileage,
-        vehicleAgeYears,
-        engine,
-        fuelType,
-        symptom,
-        recentServicesCount: Array.isArray(recentServices)
-          ? recentServices.length
-          : 0,
-        motAdvisoriesCount: Array.isArray(motAdvisories)
-          ? motAdvisories.length
-          : 0,
-      });
 
       if (!symptom || typeof symptom !== "string") {
         return res.status(400).json({ error: "Missing symptom description" });
@@ -85,10 +61,6 @@ router.post(
 	  
 	  
 	  const formattedServices = formatServiceHistory(recentServices);
-	  console.log("DIAGNOSE FORMATTED SERVICE HISTORY:", formattedServices);
-
-
-
 
 const prompt = `
 You are GarageGPT, a professional UK automotive diagnostic assistant with the expertise of a senior technician (20+ years).
@@ -143,6 +115,8 @@ Use experienced mechanic-style reasoning:
 • If recent service work exists, consider disturbed components, incorrect refitting, or coincidental failure.
 • Differentiate symptoms by operating condition where possible (cold vs warm, idle vs load).
 • Be honest about uncertainty and reduce confidence where information is limited.
+
+If a component has been recently replaced or rebuilt, reduce confidence that it is the primary cause unless symptoms strongly indicate installation, sealing, or secondary failure.
 
 If emissions-related modifications or previous engine work are mentioned, consider:
 - Incomplete blanking or sealing
