@@ -35,6 +35,14 @@ router.post(
         recentServices,
         motAdvisories,
       } = req.body || {};
+	  
+	  console.log("DIAGNOSE RAW SERVICE HISTORY:", {
+	    type: typeof recentServices,
+	    isArray: Array.isArray(recentServices),
+	    count: Array.isArray(recentServices) ? recentServices.length : 0,
+	    services: recentServices,
+	  });
+
 
       console.log("DIAGNOSE CONTEXT RECEIVED", {
         vehicleLabel,
@@ -55,18 +63,31 @@ router.post(
       if (!symptom || typeof symptom !== "string") {
         return res.status(400).json({ error: "Missing symptom description" });
       }
-	  
-	  const formattedServices = Array.isArray(recentServices)
-	    ? recentServices.map(s => {
-		    const title = s.title || s.type || "Service";
-		    const mileage = s.mileage ? `${s.mileage} miles` : "unknown mileage";
-		    const date = s.date
-			  ? new Date(s.date).toLocaleDateString("en-GB")
-			 : null;
+		
+	  const formatServiceHistory = (services = []) => {
+	    if (!Array.isArray(services) || services.length === 0) {
+		  return "None recorded";
+	    }
 
-		    return `${title}${date ? ` on ${date}` : ""} (${mileage})`;
-		  })
-	    : [];
+	    return services.map((s) => {
+		  const parts = [];
+
+		  if (s.title) parts.push(s.title);
+		  if (s.notes) parts.push(s.notes);
+		  if (s.date) {
+		    parts.push(new Date(s.date).toLocaleDateString("en-GB"));
+		  }
+		  if (s.mileage) parts.push(`${s.mileage} miles`);
+
+		  return `- ${parts.join(" – ")}`;
+	    }).join("\n");
+	  };
+	  
+	  
+	  const formattedServices = formatServiceHistory(recentServices);
+	  console.log("DIAGNOSE FORMATTED SERVICE HISTORY:", formattedServices);
+
+
 
 
 const prompt = `
@@ -102,9 +123,7 @@ Aspiration: ${aspiration || "Unknown"}   (turbocharged | naturally aspirated | s
 Mileage: ${mileage ?? "Unknown"}
 
 Recent service history (optional):
-${formattedServices.length
-  ? formattedServices.map(s => `- ${s}`).join("\n")
-  : "None recorded"}
+${formattedServices}
 
 MOT advisories (optional):
 ${Array.isArray(motAdvisories) && motAdvisories.length
