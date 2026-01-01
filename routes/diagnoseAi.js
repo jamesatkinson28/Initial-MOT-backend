@@ -3,6 +3,18 @@ import express from "express";
 import { authRequired } from "../middleware/auth.js";
 import { openai } from "../lib/openai.js";
 
+function escalateUrgency(aiUrgency, minUrgency) {
+  const order = { green: 0, amber: 1, red: 2 };
+
+  if (!minUrgency) return aiUrgency;
+  if (!aiUrgency) return minUrgency;
+
+  return order[minUrgency] > order[aiUrgency]
+    ? minUrgency
+    : aiUrgency;
+}
+
+
 const router = express.Router();
 
 /**
@@ -34,6 +46,8 @@ router.post(
         symptom,
         recentServices,
         motAdvisories,
+		warningLights,
+		minUrgency,
       } = req.body || {};
 
       if (!symptom || typeof symptom !== "string") {
@@ -159,6 +173,15 @@ If fuel type is ELECTRIC:
 • Do NOT mention: engine oil, spark plugs, injectors, turbo, DPF, EGR, exhaust components.
 • You MAY mention: 12V battery, high-voltage battery health, thermal management, charge port issues, inverter or motor noise, drivetrain vibration, brake corrosion, software or calibration issues.
 
+
+Warning lights reported by user:
+${Array.isArray(warningLights) && warningLights.length
+  ? warningLights.map(l => `- ${l}`).join("\n")
+  : "None reported"}
+
+If critical warning lights are present, you MUST NOT assign "green" urgency.
+If safety-related lights are present, prioritise "red" or "amber" accordingly.
+
 ────────────────────────
 SAFETY & URGENCY
 ────────────────────────
@@ -245,6 +268,18 @@ console.log(
 		  console.error("DIAGNOSE JSON PARSE FAILED", text);
 		  data = {};
 		}
+
+		// 🔐 Enforce minimum urgency based on warning lights
+		data.urgency = escalateUrgency(
+		  data.urgency,
+		  minUrgency
+		);
+
+		console.log("FINAL URGENCY", {
+		  ai: data.urgency,
+		  enforcedByWarningLights: minUrgency || "none",
+		});
+
 
 		// ✅ HARD GUARANTEES — frontend can trust this shape
 		return res.json({
