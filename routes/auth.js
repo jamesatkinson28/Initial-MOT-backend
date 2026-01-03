@@ -106,7 +106,7 @@ router.post("/login", async (req, res) => {
     const emailNorm = cleanEmail(email);
 
     const result = await query(
-      `SELECT id, email, password_hash, premium, premium_until, token_version
+      `SELECT id, email, password_hash, premium, premium_until, token_version, email_verified
        FROM users
        WHERE email=$1`,
       [emailNorm]
@@ -120,6 +120,13 @@ router.post("/login", async (req, res) => {
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match)
       return res.status(401).json({ error: "Invalid credentials" });
+  
+    if (!user.email_verified) {
+	  return res.status(403).json({
+		error: "EMAIL_NOT_VERIFIED",
+	  });
+	}
+
 
     // Create tokens
     const accessToken = signAccessToken(user);
@@ -159,5 +166,34 @@ router.post("/login", async (req, res) => {
 router.get("/me", authRequired, async (req, res) => {
   res.json({ user: req.user });
 });
+// ==========================================
+// Verify email endpoint
+// ==========================================
+
+router.get("/verify-email", async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).send("Invalid link");
+
+  const result = await query(
+    `
+    UPDATE users
+    SET email_verified=TRUE,
+        email_verification_token=NULL,
+        email_verification_expires=NULL
+    WHERE email_verification_token=$1
+      AND email_verification_expires > NOW()
+    RETURNING id
+    `,
+    [token]
+  );
+
+  if (result.rowCount === 0) {
+    return res.status(400).send("Invalid or expired verification link");
+  }
+
+  // Optional: redirect back into app
+  return res.redirect("garagegpt://verified");
+});
+
 
 export default router;
