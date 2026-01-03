@@ -211,15 +211,17 @@ router.get("/me", authRequired, async (req, res) => {
 
 router.get("/verify-email", async (req, res) => {
   const { token } = req.query;
-  if (!token) return res.status(400).send("Invalid link");
+  if (!token) {
+    return res.status(400).send("Invalid verification link");
+  }
 
   const result = await query(
     `
     UPDATE users
-    SET email_verified=TRUE,
-        email_verification_token=NULL,
-        email_verification_expires=NULL
-    WHERE email_verification_token=$1
+    SET email_verified = TRUE,
+        email_verification_token = NULL,
+        email_verification_expires = NULL
+    WHERE email_verification_token = $1
       AND email_verification_expires > NOW()
     RETURNING id
     `,
@@ -230,8 +232,67 @@ router.get("/verify-email", async (req, res) => {
     return res.status(400).send("Invalid or expired verification link");
   }
 
-  // Optional: redirect back into app
-  return res.redirect("garagegpt://verified");
+  // Browser fallback + deep link
+  return res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Email verified</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #020617;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+          }
+          .card {
+            text-align: center;
+            background: #0f172a;
+            padding: 32px;
+            border-radius: 16px;
+            max-width: 420px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+          }
+          h1 {
+            margin-bottom: 12px;
+          }
+          p {
+            color: #9ca3af;
+            margin-bottom: 24px;
+          }
+          a.button {
+            display: inline-block;
+            padding: 12px 20px;
+            background: #2563eb;
+            color: white;
+            text-decoration: none;
+            border-radius: 999px;
+            font-weight: 600;
+          }
+        </style>
+        <script>
+          // Try to open the app automatically
+          window.onload = () => {
+            window.location.href = "garagegpt://verified";
+          };
+        </script>
+      </head>
+      <body>
+        <div class="card">
+          <h1>✅ Email verified</h1>
+          <p>Your email address has been successfully verified.<br />
+          You can now return to GarageGPT.</p>
+          <a class="button" href="garagegpt://verified">Open GarageGPT</a>
+        </div>
+      </body>
+    </html>
+  `);
 });
 
 
