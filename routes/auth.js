@@ -112,18 +112,9 @@ router.post("/register", async (req, res) => {
 
 
     res.json({
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        premium: user.premium,
-        premium_until: user.premium_until,
-        token_version: user.token_version,
-		emailVerified: false
-      }
-    });
-	
+	  success: true,
+	  message: "Account created. Please verify your email before signing in.",
+	});
 	
 
   } catch (err) {
