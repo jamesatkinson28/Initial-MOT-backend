@@ -3,7 +3,6 @@ import axios from "axios";
 import qs from "qs";
 import dotenv from "dotenv";
 import cors from "cors";
-import Stripe from "stripe";
 import { query } from "./db/db.js";
 
 dotenv.config();
@@ -13,13 +12,6 @@ dotenv.config();
 // ==================================
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// ==================================
-// STRIPE INITIALISATION (CREATE ONCE)
-// ==================================
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2024-06-20",
-});
 
 // ==================================
 // IMPORT ROUTES
@@ -33,83 +25,10 @@ import accountRoutes from "./routes/account.js";
 import refreshRoutes from "./routes/refresh.js";
 import motInsightAi from "./routes/motInsightAi.js";
 import motExplainRoutes from "./routes/motExplain.js";
-import stripeWebhook from "./routes/stripeWebhook.js";
 import diagnoseAi from "./routes/diagnoseAi.js";
 import emailVerificationRoutes from "./routes/emailVerification.js";
+import dvlaRoutes from "./routes/dvla.js";
 
-// ==================================
-// STRIPE WEBHOOK — MUST COME BEFORE express.json()
-// ==================================
-app.post(
-  "/api/stripe/webhook",
-  express.raw({ type: "application/json" }),
-  async (req, res) => {
-    const sig = req.headers["stripe-signature"];
-
-    let event;
-    try {
-      event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
-    } catch (err) {
-      console.error("[Stripe] Bad webhook signature:", err.message);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-
-    try {
-      switch (event.type) {
-        case "checkout.session.completed": {
-          const session = event.data.object;
-          const userId = session.metadata?.userId;
-
-          const subscriptionId = session.subscription;
-          const subscription =
-            typeof subscriptionId === "string"
-              ? await stripe.subscriptions.retrieve(subscriptionId)
-              : null;
-
-          const expiry = subscription?.current_period_end
-            ? new Date(subscription.current_period_end * 1000)
-            : null;
-
-          await query(
-            `
-              UPDATE users
-              SET premium = true,
-                  premium_until = $2,
-                  monthly_unlocks_remaining = 3,
-                  last_unlock_reset = NOW()
-              WHERE id = $1
-            `,
-            [userId, expiry]
-          );
-
-          break;
-        }
-
-        case "customer.subscription.deleted":
-        case "customer.subscription.cancelled": {
-          const sub = event.data.object;
-          const userId = sub.metadata?.userId;
-
-          await query(
-            `UPDATE users SET premium = false WHERE id = $1`,
-            [userId]
-          );
-
-          break;
-        }
-      }
-
-      res.json({ received: true });
-    } catch (err) {
-      console.error("[Webhook Error]", err);
-      res.status(500).send("Webhook handler crashed");
-    }
-  }
-);
 
 // ==================================
 // NORMAL MIDDLEWARE (AFTER WEBHOOK)
@@ -129,9 +48,9 @@ app.use("/api", accountRoutes);
 app.use("/api/auth", refreshRoutes);
 app.use("/api", motInsightAi);
 app.use("/api", motExplainRoutes);
-app.use("/api", stripeWebhook);
 app.use("/api", diagnoseAi);
 app.use("/api/auth", emailVerificationRoutes);
+app.use("/api", dvlaRoutes);
 // ==================================
 // DATABASE TEST ENDPOINT
 // ==================================
