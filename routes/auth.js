@@ -150,7 +150,8 @@ router.post("/login", async (req, res) => {
         email: user.email,
         premium: user.premium,
         premium_until: user.premium_until,
-        token_version: user.token_version
+        token_version: user.token_version,
+		emailVerified: user.email_verified
       }
     });
 

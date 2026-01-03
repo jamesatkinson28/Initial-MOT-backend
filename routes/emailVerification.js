@@ -55,3 +55,4 @@ router.post("/send-verification-email", async (req, res) => {
 
   return res.json({ success: true });
 });
+export default router;
