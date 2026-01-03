@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { query } from "../db/db.js";
 import { authRequired } from "../middleware/auth.js";
+import { Resend } from "resend";
 
 const router = express.Router();
 
@@ -63,6 +64,8 @@ router.post("/register", async (req, res) => {
     );
 
     const user = result.rows[0];
+	
+	
 
     // Create tokens
     const accessToken = signAccessToken(user);
@@ -75,6 +78,38 @@ router.post("/register", async (req, res) => {
        VALUES ($1, $2, NOW() + INTERVAL '30 days')`,
       [user.id, refreshHash]
     );
+	
+	// Generate verification token
+	const verifyToken = crypto.randomBytes(32).toString("hex");
+
+	await query(
+	  `
+	  UPDATE users
+	  SET email_verification_token = $1,
+		  email_verification_expires = NOW() + INTERVAL '24 hours'
+	  WHERE id = $2
+	  `,
+	  [verifyToken, user.id]
+	);
+
+	// Send verification email
+	const verifyLink = `${process.env.EMAIL_VERIFY_URL_BASE}?token=${verifyToken}`;
+
+	const resend = new Resend(process.env.RESEND_API_KEY);
+
+	await resend.emails.send({
+	  from: "GarageGPT <no-reply@garagegpt.co.uk>",
+	  to: user.email,
+	  subject: "Verify your GarageGPT email",
+	  html: `
+		<h2>Verify your email</h2>
+		<p>Thanks for signing up to GarageGPT.</p>
+		<p>Please verify your email address:</p>
+		<a href="${verifyLink}">${verifyLink}</a>
+		<p>This link expires in 24 hours.</p>
+	  `,
+	});
+
 
     res.json({
       accessToken,
@@ -84,9 +119,12 @@ router.post("/register", async (req, res) => {
         email: user.email,
         premium: user.premium,
         premium_until: user.premium_until,
-        token_version: user.token_version
+        token_version: user.token_version,
+		emailVerified: false
       }
     });
+	
+	
 
   } catch (err) {
     if (err.code === "23505") {
