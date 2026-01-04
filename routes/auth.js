@@ -130,6 +130,8 @@ router.post("/register", async (req, res) => {
 // LOGIN
 // ==========================================
 router.post("/login", async (req, res) => {
+  console.log("LOGIN ATTEMPT:", req.body.email);
+
   try {
     const { email, password } = req.body;
     const emailNorm = cleanEmail(email);
@@ -141,28 +143,33 @@ router.post("/login", async (req, res) => {
       [emailNorm]
     );
 
-    if (result.rows.length === 0)
+    if (result.rows.length === 0) {
+      console.log("NO USER FOUND");
       return res.status(401).json({ error: "Invalid credentials" });
+    }
 
     const user = result.rows[0];
+    console.log("USER FOUND:", user.email, "email_verified:", user.email_verified);
 
+    console.log("CHECKING PASSWORD");
     const match = await bcrypt.compare(password, user.password_hash);
-    if (!match)
+    console.log("PASSWORD VALID:", match);
+
+    if (!match) {
       return res.status(401).json({ error: "Invalid credentials" });
-  
+    }
+
     if (user.email_verified === false) {
-	  return res.status(403).json({
-		error: "EMAIL_NOT_VERIFIED",
-	  });
-	}
+      console.log("BLOCKED: EMAIL NOT VERIFIED");
+      return res.status(403).json({ error: "EMAIL_NOT_VERIFIED" });
+    }
 
+    console.log("LOGIN SUCCESS:", user.email);
 
-    // Create tokens
     const accessToken = signAccessToken(user);
     const refreshToken = generateRefreshToken();
     const refreshHash = hashRefresh(refreshToken);
 
-    // Store refresh token (rotate any existing)
     await query(
       `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
        VALUES ($1, $2, NOW() + INTERVAL '30 days')
@@ -180,15 +187,15 @@ router.post("/login", async (req, res) => {
         premium: user.premium,
         premium_until: user.premium_until,
         token_version: user.token_version,
-		emailVerified: user.email_verified
-      }
+        emailVerified: user.email_verified === true, // normalize to boolean
+      },
     });
-
   } catch (err) {
     console.error("LOGIN ERROR", err);
     return res.status(500).json({ error: "Login failed" });
   }
 });
+
 
 // ==========================================
 // WHOAMI (requires auth)
