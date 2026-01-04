@@ -150,7 +150,7 @@ router.post("/login", async (req, res) => {
     if (!match)
       return res.status(401).json({ error: "Invalid credentials" });
   
-    if (!user.email_verified) {
+    if (user.email_verified === false) {
 	  return res.status(403).json({
 		error: "EMAIL_NOT_VERIFIED",
 	  });
