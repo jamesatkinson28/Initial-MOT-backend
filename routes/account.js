@@ -30,6 +30,14 @@ router.get("/account/overview", authRequired, async (req, res) => {
       `SELECT COUNT(*)::int AS count FROM unlocked_specs WHERE user_id = $1`,
       [userId]
     );
+	
+	const vrmsRes = await query(
+	  `SELECT vrm FROM unlocked_specs WHERE user_id = $1`,
+	  [userId]
+	);
+
+	const unlockedVrms = vrmsRes.rows.map(r => r.vrm);
+
 
     const user = userRes.rows[0];
 
@@ -42,6 +50,7 @@ router.get("/account/overview", authRequired, async (req, res) => {
 	  : 0,
 
       total_unlocked: unlocksRes.rows[0].count || 0,
+	  unlocked_vrms: unlockedVrms,
     });
   } catch (err) {
     console.error("[Account] overview error:", err);
