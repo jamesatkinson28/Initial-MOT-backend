@@ -130,7 +130,6 @@ router.post("/register", async (req, res) => {
 // LOGIN
 // ==========================================
 router.post("/login", async (req, res) => {
-  console.log("LOGIN ATTEMPT:", req.body.email);
 
   try {
     const { email, password } = req.body;
@@ -144,16 +143,15 @@ router.post("/login", async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      console.log("NO USER FOUND");
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
     const user = result.rows[0];
-    console.log("USER FOUND:", user.email, "email_verified:", user.email_verified);
 
-    console.log("CHECKING PASSWORD");
+
+
     const match = await bcrypt.compare(password, user.password_hash);
-    console.log("PASSWORD VALID:", match);
+
 
     if (!match) {
       return res.status(401).json({ error: "Invalid credentials" });
@@ -163,8 +161,6 @@ router.post("/login", async (req, res) => {
       console.log("BLOCKED: EMAIL NOT VERIFIED");
       return res.status(403).json({ error: "EMAIL_NOT_VERIFIED" });
     }
-
-    console.log("LOGIN SUCCESS:", user.email);
 
     const accessToken = signAccessToken(user);
     const refreshToken = generateRefreshToken();

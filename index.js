@@ -28,6 +28,8 @@ import motExplainRoutes from "./routes/motExplain.js";
 import diagnoseAi from "./routes/diagnoseAi.js";
 import emailVerificationRoutes from "./routes/emailVerification.js";
 import dvlaRoutes from "./routes/dvla.js";
+import iapRoutes from "./routes/iap.js";
+
 
 
 // ==================================
@@ -51,6 +53,8 @@ app.use("/api", motExplainRoutes);
 app.use("/api", diagnoseAi);
 app.use("/api/auth", emailVerificationRoutes);
 app.use("/api", dvlaRoutes);
+app.use("/api/iap", iapRoutes);
+
 // ==================================
 // DATABASE TEST ENDPOINT
 // ==================================
