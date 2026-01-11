@@ -67,6 +67,8 @@ function buildCleanSpec(apiResults) {
       vrm: vId.Vrm,
       make: mId.Make || vId.DvlaMake,
       model: mId.Model || mId.Range || vId.DvlaModel,
+	  model_range: mId.Range,
+	  series: mId.Series,
       variant: mId.ModelVariant,
       year_of_manufacture: vId.YearOfManufacture,
       body_style: body.BodyStyle,
@@ -95,6 +97,14 @@ function buildCleanSpec(apiResults) {
       engine_code: ice?.EngineCode || vTech?.EngineCode,
 	  engine_number: ice?.EngineNumber || vTech?.EngineNumber
     },
+	
+	transmission: {
+	  type: transmission?.TransmissionType,
+	  gears: transmission?.NumberOfGears,
+	  drive_type: transmission?.DriveType,
+	  driving_axle: transmission?.DrivingAxle
+	},
+
 
     performance: {
       bhp: power?.Bhp,
