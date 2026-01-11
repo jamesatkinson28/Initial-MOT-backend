@@ -519,6 +519,37 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
  * auth: required
  */
 
+// ------------------------------------------------------------
+// RESTORE UNLOCKED SPECS (READ-ONLY)
+// ------------------------------------------------------------
+router.get("/spec/unlocked", authRequired, async (req, res) => {
+  try {
+    const user_id = req.user.id;
+
+    const result = await query(
+      `
+      SELECT us.vrm, vs.spec_json
+      FROM unlocked_specs us
+      JOIN vehicle_specs vs ON vs.vrm = us.vrm
+      WHERE us.user_id = $1
+      ORDER BY us.created_at DESC
+      `,
+      [user_id]
+    );
+
+    return res.json(
+      result.rows.map(row => ({
+        reg: row.vrm,
+        spec: row.spec_json,
+      }))
+    );
+  } catch (err) {
+    console.error("❌ SPEC RESTORE ERROR:", err);
+    return res.status(500).json({
+      error: "Failed to restore unlocked specs",
+    });
+  }
+});
 
 
 export default router;
