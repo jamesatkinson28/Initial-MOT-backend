@@ -532,7 +532,7 @@ router.get("/spec/unlocked", authRequired, async (req, res) => {
       FROM unlocked_specs us
       JOIN vehicle_specs vs ON vs.vrm = us.vrm
       WHERE us.user_id = $1
-      ORDER BY us.created_at DESC
+      ORDER BY us.unlocked_at DESC
       `,
       [user_id]
     );
@@ -550,6 +550,7 @@ router.get("/spec/unlocked", authRequired, async (req, res) => {
     });
   }
 });
+
 
 
 export default router;
