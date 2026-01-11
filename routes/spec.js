@@ -561,6 +561,52 @@ router.get("/spec/unlocked", authRequired, async (req, res) => {
   }
 });
 
+// ------------------------------------------------------------
+// FETCH SINGLE SPEC (OPTIONAL REFRESH)
+// ------------------------------------------------------------
+router.get("/spec", authRequired, async (req, res) => {
+  try {
+    const vrm = req.query.vrm?.toUpperCase();
+    const forceRefresh = req.query.refresh === "1";
+
+    if (!vrm) {
+      return res.status(400).json({ error: "VRM required" });
+    }
+
+    // 1️⃣ Use cached spec unless refresh requested
+    if (!forceRefresh) {
+      const cached = await query(
+        `SELECT spec_json FROM vehicle_specs WHERE vrm=$1`,
+        [vrm]
+      );
+
+      if (cached.rowCount > 0) {
+        return res.json(cached.rows[0].spec_json);
+      }
+    }
+
+    // 2️⃣ Fetch fresh from API
+    const spec = await fetchSpecDataFromAPI(vrm);
+
+    if (!spec) {
+      return res.status(404).json({ error: "Spec not found" });
+    }
+
+    // 3️⃣ Save refreshed spec
+    await query(
+      `INSERT INTO vehicle_specs (vrm, spec_json)
+       VALUES ($1, $2)
+       ON CONFLICT (vrm)
+       DO UPDATE SET spec_json=$2, updated_at=NOW()`,
+      [vrm, spec]
+    );
+
+    return res.json(spec);
+  } catch (err) {
+    console.error("FETCH SPEC ERROR:", err);
+    return res.status(500).json({ error: "Failed to fetch spec" });
+  }
+});
 
 
 export default router;
