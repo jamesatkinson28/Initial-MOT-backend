@@ -29,7 +29,7 @@ import diagnoseAi from "./routes/diagnoseAi.js";
 import emailVerificationRoutes from "./routes/emailVerification.js";
 import dvlaRoutes from "./routes/dvla.js";
 import iapRoutes from "./routes/iap.js";
-
+import lookupRoutes from "./routes/lookup.js";
 
 
 // ==================================
@@ -54,6 +54,8 @@ app.use("/api", diagnoseAi);
 app.use("/api/auth", emailVerificationRoutes);
 app.use("/api", dvlaRoutes);
 app.use("/api/iap", iapRoutes);
+app.use("/api/lookup", lookupRoutes);
+
 
 // ==================================
 // DATABASE TEST ENDPOINT
