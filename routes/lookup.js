@@ -3,12 +3,17 @@ import fetch from "node-fetch";
 
 const router = express.Router();
 
+const normaliseVRM = (vrm) =>
+  vrm.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+
 router.get("/", async (req, res) => {
   const { vrm } = req.query;
 
   if (!vrm) {
     return res.status(400).json({ error: "Missing VRM" });
   }
+
+  const normalisedVRM = normaliseVRM(vrm);
 
   try {
     // 1️⃣ DVLA FIRST (authoritative)
@@ -20,7 +25,9 @@ router.get("/", async (req, res) => {
           "Content-Type": "application/json",
           "x-api-key": process.env.DVLA_API_KEY_LIVE,
         },
-        body: JSON.stringify({ registrationNumber: vrm }),
+        body: JSON.stringify({
+          registrationNumber: normalisedVRM,
+        }),
       }
     );
 
@@ -40,7 +47,12 @@ router.get("/", async (req, res) => {
 
     try {
       const motRes = await fetch(
-        `https://initial-mot-backend-production.up.railway.app/mot?vrm=${vrm}`
+        `https://driver-vehicle-licensing.api.gov.uk/mot/vehicles?registration=${normalisedVRM}`,
+        {
+          headers: {
+            "x-api-key": process.env.DVSA_API_KEY,
+          },
+        }
       );
 
       if (motRes.ok) {
@@ -48,16 +60,17 @@ router.get("/", async (req, res) => {
         motStatus = "AVAILABLE";
       }
     } catch {
-      // swallow MOT errors
+      // MOT unavailable → keep PENDING
     }
 
-    // 3️⃣ Always return DVLA vehicle
+    // 3️⃣ Always return vehicle
     res.json({
       vehicle,
       mot,
       motStatus,
     });
   } catch (err) {
+    console.error("Lookup error:", err);
     res.status(500).json({ error: "LOOKUP_FAILED" });
   }
 });
