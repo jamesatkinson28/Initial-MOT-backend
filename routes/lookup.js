@@ -46,22 +46,25 @@ router.get("/", async (req, res) => {
     let motStatus = "PENDING";
 
     try {
-      const motRes = await fetch(
-        `https://driver-vehicle-licensing.api.gov.uk/mot/vehicles?registration=${normalisedVRM}`,
-        {
-          headers: {
-            "x-api-key": process.env.DVSA_API_KEY,
-          },
-        }
-      );
+	  const motRes = await fetch(
+		`https://beta.check-mot.service.gov.uk/trade/vehicles/mot-tests?registration=${normalisedVRM}`,
+		{
+		  headers: {
+			"x-api-key": process.env.DVSA_API_KEY,
+			"Accept": "application/json+v6",
+		  },
+		}
+	  );
 
-      if (motRes.ok) {
-        mot = await motRes.json();
-        motStatus = "AVAILABLE";
-      }
-    } catch {
-      // MOT unavailable → keep PENDING
-    }
+	  if (motRes.ok) {
+		mot = await motRes.json();
+		motStatus = "AVAILABLE";
+	  } else {
+		console.log("MOT unavailable:", motRes.status);
+	  }
+	} catch (e) {
+	  console.log("MOT fetch error:", e);
+	}
 
     // 3️⃣ Always return vehicle
     res.json({
