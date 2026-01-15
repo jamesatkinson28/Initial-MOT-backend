@@ -3,7 +3,7 @@ import fetch from "node-fetch";
 
 const router = express.Router();
 
-router.get("/lookup", async (req, res) => {
+router.get("/", async (req, res) => {
   const { vrm } = req.query;
 
   if (!vrm) {
