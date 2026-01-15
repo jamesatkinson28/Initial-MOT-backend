@@ -23,9 +23,16 @@ router.get("/dvla", async (req, res) => {
       }
     );
 
-    if (!response.ok) {
-      return res.status(response.status).json({ error: "DVLA lookup failed" });
-    }
+    if (response.status === 404) {
+	  return res.status(404).json({ error: "VEHICLE_NOT_FOUND" });
+	}
+
+	if (!response.ok) {
+	  return res.status(502).json({
+		error: "DVLA_TEMPORARY_ERROR",
+		status: response.status,
+	  });
+	}
 
     const data = await response.json();
     res.json(data);
