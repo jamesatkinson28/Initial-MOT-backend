@@ -1,7 +1,15 @@
 import express from "express";
 import fetch from "node-fetch";
+import axios from "axios";
+import { getToken } from "../lib/dvsaToken.js";
 
 const router = express.Router();
+
+// ─────────────────────────────────────────────
+// Simple in-memory cache (same as /mot)
+// ─────────────────────────────────────────────
+const vrmCache = {};
+const CACHE_LIFETIME = 60 * 60; // 1 hour
 
 const normaliseVRM = (vrm) =>
   vrm.replace(/[^A-Z0-9]/gi, "").toUpperCase();
@@ -16,7 +24,9 @@ router.get("/", async (req, res) => {
   const normalisedVRM = normaliseVRM(vrm);
 
   try {
-    // 1️⃣ DVLA FIRST (authoritative)
+    // ─────────────────────────────────────────────
+    // 1️⃣ DVLA (authoritative, fatal if fails)
+    // ─────────────────────────────────────────────
     const dvlaRes = await fetch(
       "https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles",
       {
@@ -41,40 +51,58 @@ router.get("/", async (req, res) => {
 
     const vehicle = await dvlaRes.json();
 
-    // 2️⃣ MOT SECONDARY (non-fatal)
+    // ─────────────────────────────────────────────
+    // 2️⃣ MOT (secondary, cached, non-fatal)
+    // ─────────────────────────────────────────────
     let mot = null;
     let motStatus = "PENDING";
 
+    const now = Math.floor(Date.now() / 1000);
+
     try {
-	  const motRes = await fetch(
-		`https://beta.check-mot.service.gov.uk/trade/vehicles/mot-tests?registration=${normalisedVRM}`,
-		{
-		  headers: {
-			"x-api-key": process.env.DVSA_API_KEY,
-			"Accept": "application/json+v6",
-		  },
-		}
-	  );
+      if (
+        vrmCache[normalisedVRM] &&
+        now < vrmCache[normalisedVRM].expires
+      ) {
+        mot = vrmCache[normalisedVRM].data;
+        motStatus = "AVAILABLE";
+      } else {
+        const token = await getToken();
 
-	  if (motRes.ok) {
-		mot = await motRes.json();
-		motStatus = "AVAILABLE";
-	  } else {
-		console.log("MOT unavailable:", motRes.status);
-	  }
-	} catch (e) {
-	  console.log("MOT fetch error:", e);
-	}
+        const url = `https://history.mot.api.gov.uk/v1/trade/vehicles/registration/${encodeURIComponent(
+          normalisedVRM
+        )}`;
 
-    // 3️⃣ Always return vehicle
-    res.json({
+        const motRes = await axios.get(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "X-API-Key": process.env.API_KEY,
+          },
+        });
+
+        mot = motRes.data;
+        motStatus = "AVAILABLE";
+
+        vrmCache[normalisedVRM] = {
+          data: mot,
+          expires: now + CACHE_LIFETIME,
+        };
+      }
+    } catch (e) {
+      console.log("MOT fetch failed (non-fatal):", e.message);
+    }
+
+    // ─────────────────────────────────────────────
+    // 3️⃣ Unified response
+    // ─────────────────────────────────────────────
+    return res.json({
       vehicle,
       mot,
       motStatus,
     });
   } catch (err) {
     console.error("Lookup error:", err);
-    res.status(500).json({ error: "LOOKUP_FAILED" });
+    return res.status(500).json({ error: "LOOKUP_FAILED" });
   }
 });
 
