@@ -18,15 +18,15 @@ const router = express.Router();
 router.post("/spec-unlock", authRequired, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { vrm } = req.body;
+    const { vrm, free } = req.body; // 👈 read `free`
 
     if (!vrm) {
       return res.status(400).json({ success: false, error: "Missing VRM" });
     }
 
-    // 1️⃣ Already unlocked? Return success
+    // 1️⃣ Already unlocked? Return success (idempotent)
     const existing = await query(
-      `SELECT * FROM unlocked_specs WHERE user_id = $1 AND vrm = $2`,
+      `SELECT 1 FROM unlocked_specs WHERE user_id = $1 AND vrm = $2`,
       [userId, vrm]
     );
 
@@ -37,12 +37,22 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
       });
     }
 
-    // 2️⃣ Insert unlock (purchase already happened on store)
+    // 2️⃣ Insert unlock
     await query(
       `INSERT INTO unlocked_specs (user_id, vrm)
        VALUES ($1, $2)`,
       [userId, vrm]
     );
+
+    // 3️⃣ FREE unlock accounting (THIS was missing)
+    if (free === true) {
+      await query(
+        `UPDATE users
+         SET monthly_unlocks_used = monthly_unlocks_used + 1
+         WHERE id = $1`,
+        [userId]
+      );
+    }
 
     return res.json({
       success: true,
@@ -56,5 +66,6 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
     });
   }
 });
+
 
 export default router;
