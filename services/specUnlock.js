@@ -27,8 +27,6 @@ async function createSpecSnapshot(vrm, spec) {
 export async function unlockSpecForUser({ userId, vrm, spec }) {
   const vrmUpper = vrm.toUpperCase();
 
-  await query("BEGIN");
-
   try {
     // 1️⃣ Already unlocked?
     const existing = await query(
@@ -41,27 +39,24 @@ export async function unlockSpecForUser({ userId, vrm, spec }) {
     );
 
     if (existing.rowCount > 0) {
-	  const snap = await query(
-		`
-		SELECT s.spec_json
-		FROM unlocked_specs u
-		JOIN vehicle_spec_snapshots s ON s.id = u.snapshot_id
-		WHERE u.user_id = $1 AND u.vrm = $2
-		`,
-		[userId, vrmUpper]
-	  );
+      const snap = await query(
+        `
+        SELECT s.spec_json
+        FROM unlocked_specs u
+        JOIN vehicle_spec_snapshots s ON s.id = u.snapshot_id
+        WHERE u.user_id = $1 AND u.vrm = $2
+        `,
+        [userId, vrmUpper]
+      );
 
-	  const spec = snap.rows[0]?.spec_json;
+      const spec = snap.rows[0]?.spec_json;
 
-	  await query("ROLLBACK");
-
-	  return {
-		alreadyUnlocked: true,
-		snapshotId: existing.rows[0].snapshot_id,
-		spec,
-	  };
-	}
-
+      return {
+        alreadyUnlocked: true,
+        snapshotId: existing.rows[0].snapshot_id,
+        spec,
+      };
+    }
 
     // 2️⃣ Snapshot reuse
     const latestSnapshotRes = await query(
@@ -92,32 +87,18 @@ export async function unlockSpecForUser({ userId, vrm, spec }) {
       `
       INSERT INTO unlocked_specs (user_id, vrm, snapshot_id)
       VALUES ($1, $2, $3)
-	  ON CONFLICT (user_id, vrm) DO NOTHING
+      ON CONFLICT (user_id, vrm) DO NOTHING
       `,
       [userId, vrmUpper, snapshot.id]
     );
-	
-	const confirmed = await query(
-	  `
-	  SELECT snapshot_id
-	  FROM unlocked_specs
-	  WHERE user_id = $1 AND vrm = $2
-	  `,
-	  [userId, vrmUpper]
-	);
 
-	const finalSnapshotId = confirmed.rows[0]?.snapshot_id;
-
-	await query("COMMIT");
-
-	return {
-	  alreadyUnlocked:
-		existing.rowCount > 0 || finalSnapshotId !== snapshot.id,
-	  snapshotId: finalSnapshotId,
-	  spec: snapshot.spec_json,
-	};
+    return {
+      alreadyUnlocked: false,
+      snapshotId: snapshot.id,
+      spec: snapshot.spec_json,
+    };
   } catch (err) {
-    await query("ROLLBACK");
     throw err;
   }
 }
+
