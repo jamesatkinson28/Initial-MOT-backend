@@ -3,6 +3,30 @@ import { query } from "../db/db.js";
 import { authRequired } from "../middleware/auth.js";
 import { verifyAppleReceipt } from "../services/iap/apple.js";
 import { verifyGooglePurchase } from "../services/iap/google.js";
+import { unlockSpecForUser } from "../services/specUnlock.js";
+import axios from "axios";
+import { buildCleanSpec } from "../services/specBuilder.js";
+
+
+async function fetchSpecDataFromAPI(vrm) {
+  const url = `${process.env.SPEC_API_BASE_URL}/r2/lookup`;
+
+  const response = await axios.get(url, {
+    params: {
+      ApiKey: process.env.SPEC_API_KEY,
+      PackageName: "VehicleDetails",
+      Vrm: vrm,
+    },
+  });
+
+  const data = response.data;
+  if (!data?.Results?.VehicleDetails) return null;
+
+  // IMPORTANT: call the same cleaner as spec.js
+  // If buildCleanSpec is not exported yet, see note below
+  const cleanSpec = buildCleanSpec(data.Results);
+  return cleanSpec;
+}
 
 const router = express.Router();
 
@@ -22,16 +46,30 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
       return res.status(400).json({ success: false, error: "Missing VRM" });
     }
 
+	const vrmUpper = vrm.toUpperCase();
 
     // 1️⃣ Already unlocked?
     const existing = await query(
       `SELECT 1 FROM unlocked_specs WHERE user_id = $1 AND vrm = $2`,
-      [userId, vrm]
+      [ userId, vrmUpper ]
     );
 
     if (existing.rows.length > 0) {
-      return res.json({ success: true, alreadyUnlocked: true });
-    }
+	  const spec = await fetchSpecDataFromAPI(vrmUpper);
+
+	  if (!spec) {
+		return res.status(404).json({
+		  success: false,
+		  error: "Vehicle spec not found",
+		});
+	  }
+
+	  return res.json({
+		success: true,
+		alreadyUnlocked: true,
+		spec,
+	  });
+	}
 
     // 2️⃣ FREE unlock path
     if (free === true) {
@@ -77,13 +115,30 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
     }
 
     // 4️⃣ Unlock spec
-    await query(
-      `INSERT INTO unlocked_specs (user_id, vrm)
-       VALUES ($1, $2)`,
-      [userId, vrm]
-    );
 
-    return res.json({ success: true, unlocked: true });
+
+    // 4️⃣ Fetch spec
+	const spec = await fetchSpecDataFromAPI(vrmUpper);
+
+	if (!spec) {
+	  return res.status(404).json({
+		success: false,
+		error: "Vehicle spec not found",
+	  });
+	}
+
+	// 5️⃣ Delegate unlock (snapshots + unlocked_specs)
+	const result = await unlockSpecForUser({
+	  userId,
+	  vrm: vrmUpper,
+	  spec,
+	});
+
+	return res.json({
+	  success: true,
+	  unlocked: !result.alreadyUnlocked,
+	  spec: result.spec ?? spec,
+	});
   } catch (err) {
     console.error("❌ IAP SPEC UNLOCK ERROR:", err);
     res.status(500).json({ success: false, error: "Failed to unlock spec" });
