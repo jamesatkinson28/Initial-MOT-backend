@@ -101,6 +101,17 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
 	  spec,
 	});
 	
+	await query(
+	  `
+	  INSERT INTO vehicle_specs (vrm, spec_json)
+	  VALUES ($1, $2)
+	  ON CONFLICT (vrm)
+	  DO UPDATE SET spec_json = EXCLUDED.spec_json
+	  `,
+	  [vrmUpper, result.spec ?? spec]
+	);
+
+	
 	if (result.alreadyUnlocked) {
 	  return res.json({
 		success: true,

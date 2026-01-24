@@ -55,14 +55,35 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
     );
 
     if (existing.rows.length > 0) {
-	  const spec = await fetchSpecDataFromAPI(vrmUpper);
+	  const snap = await query(
+		`
+		SELECT s.spec_json
+		FROM unlocked_specs u
+		JOIN vehicle_spec_snapshots s ON s.id = u.snapshot_id
+		WHERE u.user_id = $1 AND u.vrm = $2
+		`,
+		[userId, vrmUpper]
+	  );
+
+	  const spec = snap.rows[0]?.spec_json;
 
 	  if (!spec) {
 		return res.status(404).json({
 		  success: false,
-		  error: "Vehicle spec not found",
+		  error: "Unlocked spec snapshot not found",
 		});
 	  }
+
+	  // re-cache it
+	  await query(
+		`
+		INSERT INTO vehicle_specs (vrm, spec_json)
+		VALUES ($1, $2)
+		ON CONFLICT (vrm)
+		DO UPDATE SET spec_json = EXCLUDED.spec_json
+		`,
+		[vrmUpper, spec]
+	  );
 
 	  return res.json({
 		success: true,
@@ -71,9 +92,9 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
 	  });
 	}
 
-    // 2️⃣ FREE unlock path
-    if (free === true) {
-	  const res = await query(
+    // 2️⃣ FREE unlock path (premium users only)
+	if (free === true) {
+	  const freeRes = await query(
 		`
 		UPDATE users
 		SET monthly_unlocks_remaining = monthly_unlocks_remaining - 1
@@ -85,13 +106,14 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
 		[userId]
 	  );
 
-	  if (res.rowCount === 0) {
+	  if (freeRes.rowCount === 0) {
 		return res.status(403).json({
 		  success: false,
-		  error: "No free unlocks remaining",
+		  error: "No free unlocks remaining or not a premium user",
 		});
 	  }
-    } else {
+	} else {
+
       // 3️⃣ PAID unlock path — validate store receipt
 
       if (platform === "ios") {
@@ -133,6 +155,17 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
 	  vrm: vrmUpper,
 	  spec,
 	});
+	
+	await query(
+	  `
+	  INSERT INTO vehicle_specs (vrm, spec_json)
+	  VALUES ($1, $2)
+	  ON CONFLICT (vrm)
+	  DO UPDATE SET spec_json = EXCLUDED.spec_json
+	  `,
+	  [vrmUpper, result.spec ?? spec]
+	);
+
 
 	return res.json({
 	  success: true,
