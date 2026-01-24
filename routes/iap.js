@@ -92,16 +92,16 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
 	  });
 	}
 
-    // 2️⃣ FREE unlock path (premium users only)
+    // 2️⃣ FREE unlock path (premium users only, legacy contract)
 	if (free === true) {
 	  const freeRes = await query(
 		`
 		UPDATE users
-		SET monthly_unlocks_remaining = monthly_unlocks_remaining - 1
+		SET monthly_unlocks_used = monthly_unlocks_used + 1
 		WHERE id = $1
 		  AND premium = true
-		  AND monthly_unlocks_remaining > 0
-		RETURNING monthly_unlocks_remaining
+		  AND monthly_unlocks_used < 3
+		RETURNING monthly_unlocks_used
 		`,
 		[userId]
 	  );
@@ -113,6 +113,7 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
 		});
 	  }
 	} else {
+
 
       // 3️⃣ PAID unlock path — validate store receipt
 
