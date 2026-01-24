@@ -7,6 +7,32 @@ const router = express.Router();
 
 const ENABLE_IMAGES = false;
 
+// ------------------------------------------------------------
+// Add helper
+// ------------------------------------------------------------
+async function createSpecSnapshot(vrm, spec) {
+  const result = await query(
+    `
+    INSERT INTO vehicle_spec_snapshots (
+      vrm,
+      spec_json,
+      vin,
+      engine_code
+    )
+    VALUES ($1, $2, $3, $4)
+    RETURNING *
+    `,
+    [
+      vrm,
+      spec,
+      spec?.identity?.vin ?? null,
+      spec?.engine?.engine_code ?? null
+    ]
+  );
+
+  return result.rows[0];
+}
+
 
 // ------------------------------------------------------------
 // REMOVE NULLS FROM OUTPUT
@@ -459,16 +485,42 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
       await query("ROLLBACK");
       return res.status(404).json({ error: "Vehicle spec not found" });
     }
+	
+	// --------------------------------------------------
+	// STEP 3b: Reuse latest snapshot if identical
+	// --------------------------------------------------
+	const latestSnapshotRes = await query(
+	  `
+	  SELECT *
+	  FROM vehicle_spec_snapshots
+	  WHERE vrm = $1
+	  ORDER BY created_at DESC
+	  LIMIT 1
+	  `,
+	  [vrmUpper]
+	);
+
+	let snapshot;
+
+	if (
+	  latestSnapshotRes.rowCount > 0 &&
+	  JSON.stringify(latestSnapshotRes.rows[0].spec_json) === JSON.stringify(spec)
+	) {
+	  snapshot = latestSnapshotRes.rows[0];
+	} else {
+	  snapshot = await createSpecSnapshot(vrmUpper, spec);
+	}
+
 
     // --------------------------------------------------
     // STEP 4: Persist unlock FIRST
     // --------------------------------------------------
     const unlockInsert = await query(
-      `INSERT INTO unlocked_specs (user_id, vrm)
-       VALUES ($1, $2)
+      `INSERT INTO unlocked_specs (user_id, vrm, snapshot_id)
+	   VALUES ($1, $2, $3)
        ON CONFLICT DO NOTHING
        RETURNING 1`,
-      [user_id, vrmUpper]
+      [user_id, vrmUpper, snapshot.id]
     );
 
     // If insert failed, abort (safety net)
@@ -476,6 +528,7 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
       await query("ROLLBACK");
       return res.status(409).json({ error: "Unlock already exists" });
     }
+	
 
     // --------------------------------------------------
     // STEP 5: Increment usage ONLY AFTER successful insert
@@ -492,13 +545,14 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
     // --------------------------------------------------
     // STEP 6: Cache spec
     // --------------------------------------------------
-    await query(
-      `INSERT INTO vehicle_specs (vrm, spec_json)
-       VALUES ($1, $2)
-       ON CONFLICT (vrm)
-       DO UPDATE SET spec_json=$2, updated_at=NOW()`,
-      [vrmUpper, spec]
-    );
+    if (cached.rowCount === 0) {
+	  await query(
+		`INSERT INTO vehicle_specs (vrm, spec_json)
+		 VALUES ($1, $2)
+		 ON CONFLICT (vrm) DO NOTHING`,
+		[vrmUpper, spec]
+	  );
+	}
 
     await query("COMMIT");
 
@@ -538,11 +592,16 @@ router.get("/spec/unlocked", authRequired, async (req, res) => {
 
     const result = await query(
       `
-      SELECT us.vrm, vs.spec_json
-      FROM unlocked_specs us
-      JOIN vehicle_specs vs ON vs.vrm = us.vrm
-      WHERE us.user_id = $1
-      ORDER BY us.unlocked_at DESC
+      SELECT
+	    us.vrm,
+	    COALESCE(vss.spec_json, vs.spec_json) AS spec_json
+	  FROM unlocked_specs us
+	  LEFT JOIN vehicle_spec_snapshots vss
+	    ON vss.id = us.snapshot_id
+	  LEFT JOIN vehicle_specs vs
+	    ON vs.vrm = us.vrm
+	  WHERE us.user_id = $1
+	  ORDER BY us.unlocked_at DESC
       `,
       [user_id]
     );
