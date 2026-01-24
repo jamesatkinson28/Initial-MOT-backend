@@ -22,8 +22,6 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
       return res.status(400).json({ success: false, error: "Missing VRM" });
     }
 
-    // 🔁 Reset monthly unlocks if new cycle
-    await maybeResetMonthlyUnlocks(userId);
 
     // 1️⃣ Already unlocked?
     const existing = await query(
@@ -37,12 +35,24 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
 
     // 2️⃣ FREE unlock path
     if (free === true) {
-      await query(
-        `UPDATE users
-         SET monthly_unlocks_used = monthly_unlocks_used + 1
-         WHERE id = $1`,
-        [userId]
-      );
+	  const res = await query(
+		`
+		UPDATE users
+		SET monthly_unlocks_remaining = monthly_unlocks_remaining - 1
+		WHERE id = $1
+		  AND premium = true
+		  AND monthly_unlocks_remaining > 0
+		RETURNING monthly_unlocks_remaining
+		`,
+		[userId]
+	  );
+
+	  if (res.rowCount === 0) {
+		return res.status(403).json({
+		  success: false,
+		  error: "No free unlocks remaining",
+		});
+	  }
     } else {
       // 3️⃣ PAID unlock path — validate store receipt
 
