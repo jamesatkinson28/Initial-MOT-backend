@@ -163,6 +163,8 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
 	if (!finalSpec) {
 	  throw new Error("Invariant violated: no spec available to cache");
 	}
+	console.log("🧪 CACHING SPEC INTO vehicle_specs:", vrmUpper);
+
 
 	// 🔁 Cache spec for frontend + restore
 	await query(
@@ -174,6 +176,7 @@ router.post("/spec-unlock", authRequired, async (req, res) => {
 	  `,
 	  [vrmUpper, finalSpec]
 	);
+	console.log("✅ CACHED SPEC OK:", vrmUpper);
 
 	return res.json({
 	  success: true,
