@@ -100,31 +100,39 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
 	  vrm: vrmUpper,
 	  spec,
 	});
-	
+
+	// ✅ Restore old Step-6 invariant: always cache a real spec
+	const finalSpec = result.spec || spec;
+
+	if (!finalSpec) {
+	  throw new Error("Invariant violated: no spec available to cache");
+	}
+
+	// 🔁 Cache spec for frontend + restore
 	await query(
 	  `
 	  INSERT INTO vehicle_specs (vrm, spec_json)
 	  VALUES ($1, $2)
 	  ON CONFLICT (vrm)
-	  DO UPDATE SET spec_json = EXCLUDED.spec_json
+	  DO UPDATE SET spec_json = EXCLUDED.spec_json, updated_at = NOW()
 	  `,
-	  [vrmUpper, result.spec ?? spec]
+	  [vrmUpper, finalSpec]
 	);
 
-	
 	if (result.alreadyUnlocked) {
 	  return res.json({
 		success: true,
 		alreadyUnlocked: true,
-		spec,
+		spec: finalSpec,
 	  });
 	}
 
 	return res.json({
 	  success: true,
 	  saved: true,
-	  spec: result.spec,
+	  spec: finalSpec,
 	});
+
   } catch (err) {
     console.error("UNLOCK SPEC ERROR:", err);
     res.status(500).json({ error: "Failed to unlock spec" });

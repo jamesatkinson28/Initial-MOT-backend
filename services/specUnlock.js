@@ -41,12 +41,27 @@ export async function unlockSpecForUser({ userId, vrm, spec }) {
     );
 
     if (existing.rowCount > 0) {
-      await query("ROLLBACK");
-      return {
-        alreadyUnlocked: true,
-        snapshotId: existing.rows[0].snapshot_id,
-      };
-    }
+	  const snap = await query(
+		`
+		SELECT s.spec_json
+		FROM unlocked_specs u
+		JOIN vehicle_spec_snapshots s ON s.id = u.snapshot_id
+		WHERE u.user_id = $1 AND u.vrm = $2
+		`,
+		[userId, vrmUpper]
+	  );
+
+	  const spec = snap.rows[0]?.spec_json;
+
+	  await query("ROLLBACK");
+
+	  return {
+		alreadyUnlocked: true,
+		snapshotId: existing.rows[0].snapshot_id,
+		spec,
+	  };
+	}
+
 
     // 2️⃣ Snapshot reuse
     const latestSnapshotRes = await query(
