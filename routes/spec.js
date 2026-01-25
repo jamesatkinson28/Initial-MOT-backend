@@ -1,6 +1,6 @@
 import express from "express";
 import { authRequired } from "../middleware/auth.js";
-import { query } from "../db/db.js";
+import { query, withTransaction } from "../db/db.js";
 import axios from "axios";
 
 const router = express.Router();
@@ -392,349 +392,240 @@ async function fetchSpecDataFromAPI(vrm) {
 // ------------------------------------------------------------
 
 router.post("/unlock-spec", authRequired, async (req, res) => {
-  const client = await query("BEGIN").catch(() => null);
-  const dbName = await query(`SELECT current_database() as db`);
-  console.log("🧠 Connected DB:", dbName.rows[0].db);
-
   try {
-    const { vrm } = req.body;
-	console.log("🚀 UNLOCK SPEC START", {
-	  vrm,
-	  user_id: req.user.id
-	});
+    const result = await withTransaction(async (db) => {
+      const { vrm } = req.body;
 
-    if (!vrm) return res.status(400).json({ error: "VRM required" });
-
-    const vrmUpper = vrm.toUpperCase();
-    const user = req.user;
-    const user_id = user.id;
-	
-	// If provider previously told us it's in retention and we haven't reached retry_after, don't call provider again
-	const statusRow = await query(
-	  `SELECT status_code, retry_after
-	   FROM vrm_provider_status
-	   WHERE vrm = $1`,
-	  [vrmUpper]
-	);
-
-	if (
-	  statusRow.rowCount > 0 &&
-	  typeof statusRow.rows[0].status_code === "string" &&
-	  statusRow.rows[0].status_code.toLowerCase() ===
-		"plateinretentionlastvehiclereturned" &&
-	  new Date(statusRow.rows[0].retry_after) > new Date()
-	) {
-	  console.warn(
-		"VRM IN RETENTION:",
-		vrmUpper,
-		"retry after:",
-		statusRow.rows[0].retry_after
-	  );
-	  // If user already unlocked, return cached spec (if exists) without re-fetching
-	  const cached = await query(
-		`SELECT spec_json FROM vehicle_specs WHERE vrm=$1`,
-		[vrmUpper]
-	  );
-	  
-	  await query("ROLLBACK");
-
-	  return res.json({
-		success: false,
-		retention: true,
-		message:
-		  "This registration is currently in retention. Specs will refresh once DVLA/provider updates.",
-		spec: cached.rowCount > 0 ? cached.rows[0].spec_json : null
-	  });
-	}
-
-    // --------------------------------------------------
-    // STEP 1: Already unlocked? (DB is authority)
-    // --------------------------------------------------
-    const alreadyUnlocked = await query(
-	  `SELECT 1 FROM unlocked_specs WHERE user_id=$1 AND vrm=$2`,
-	  [user_id, vrmUpper]
-	);
-
-	if (alreadyUnlocked.rowCount > 0) {
-	  const cached = await query(
-		`SELECT spec_json FROM vehicle_specs WHERE vrm=$1`,
-		[vrmUpper]
-	  );
-
-	  let spec = null;
-
-	  if (cached.rowCount > 0) {
-		spec = cached.rows[0].spec_json;
-	  } else {
-		const result = await fetchSpecDataFromAPI(vrmUpper);
-		spec = result?.spec;
-	  }
-
-	  return res.json({
-		success: true,
-		alreadyUnlocked: true,
-		price: 0,
-		saved: true,
-		spec
-	  });
-	}
-
-
-    // --------------------------------------------------
-    // STEP 2: Fetch user state
-    // --------------------------------------------------
-    const userRow = await query(
-      `SELECT premium, premium_until, monthly_unlocks_used
-       FROM users WHERE id=$1 FOR UPDATE`,
-      [user_id]
-    );
-
-    const u = userRow.rows[0];
-    const isPremium =
-      u.premium &&
-      (!u.premium_until || new Date(u.premium_until) > new Date());
-
-    let price = 1.49;
-    let remainingFreeUnlocks = null;
-
-    if (isPremium) {
-      const remaining = Math.max(3 - u.monthly_unlocks_used, 0);
-      remainingFreeUnlocks = remaining;
-
-      if (remaining === 0) {
-        price = Number((1.49 * 0.75).toFixed(2));
+      if (!vrm) {
+        return { status: 400, body: { error: "VRM required" } };
       }
-    }
 
-    // --------------------------------------------------
-    // STEP 3: Fetch spec
-    // --------------------------------------------------
-    const cached = await query(
-	  `SELECT spec_json FROM vehicle_specs WHERE vrm=$1`,
-	  [vrmUpper]
-	);
+      const vrmUpper = vrm.toUpperCase();
+      const user_id = req.user.id;
 
-	let spec = null;
+      console.log("🚀 UNLOCK SPEC START", { vrm: vrmUpper, user_id });
 
-	if (cached.rowCount > 0) {
-	  spec = cached.rows[0].spec_json;
+      // --------------------------------------------------
+      // STEP 0: Provider retention short-circuit
+      // --------------------------------------------------
+      const statusRow = await db.query(
+        `SELECT status_code, retry_after
+         FROM vrm_provider_status
+         WHERE vrm = $1`,
+        [vrmUpper]
+      );
 
-	  // 🔄 Auto-upgrade EV specs missing new fields
-	  const needsUpgrade =
-		(spec.engine?.fuel_type === "ELECTRICITY" && !spec.ev?.miles_per_kwh) ||
-		(spec.ev && !spec.ev.wltp_range_miles);
+      if (
+        statusRow.rowCount > 0 &&
+        statusRow.rows[0].status_code?.toLowerCase() ===
+          "plateinretentionlastvehiclereturned" &&
+        new Date(statusRow.rows[0].retry_after) > new Date()
+      ) {
+        const cached = await db.query(
+          `SELECT spec_json FROM vehicle_specs WHERE vrm=$1`,
+          [vrmUpper]
+        );
 
-	  if (needsUpgrade) {
-		const result = await fetchSpecDataFromAPI(vrmUpper);
-		const upgradedSpec = result?.spec;
-		const statusCode = result?.statusCode;
+        return {
+          status: 200,
+          body: {
+            success: false,
+            retention: true,
+            message:
+              "This registration is currently in retention. Specs will refresh once DVLA/provider updates.",
+            spec: cached.rowCount ? cached.rows[0].spec_json : null
+          }
+        };
+      }
 
-		if (statusCode === "PlateInRetentionLastVehicleReturned") {
-		  // mark status and stop
-		  await query(
-			`INSERT INTO vrm_provider_status (vrm, status_code, last_checked_at, retry_after)
-			 VALUES ($1, $2, NOW(), $3)
-			 ON CONFLICT (vrm)
-			 DO UPDATE SET status_code=$2, last_checked_at=NOW(), retry_after=$3`,
-			[vrmUpper, statusCode, nextWeeklyRetryDate()]
-		  );
+      // --------------------------------------------------
+      // STEP 1: Already unlocked?
+      // --------------------------------------------------
+      const alreadyUnlocked = await db.query(
+        `SELECT snapshot_id
+         FROM unlocked_specs
+         WHERE user_id=$1 AND vrm=$2`,
+        [user_id, vrmUpper]
+      );
 
-		  await query("ROLLBACK");
+      if (alreadyUnlocked.rowCount > 0) {
+        const snap = await db.query(
+          `SELECT spec_json
+           FROM vehicle_spec_snapshots
+           WHERE id=$1`,
+          [alreadyUnlocked.rows[0].snapshot_id]
+        );
 
-		  return res.json({
-			success: false,
-			retention: true,
-			message:
-			  "Registration is currently in retention. Try again after the next DVLA/provider update.",
-			spec
-		  });
-		}
+        return {
+          status: 200,
+          body: {
+            success: true,
+            alreadyUnlocked: true,
+            price: 0,
+            saved: true,
+            spec: snap.rows[0]?.spec_json ?? null
+          }
+        };
+      }
 
-		// ✅ Upgrade cached spec with new data
-		if (upgradedSpec) {
-		  spec = upgradedSpec;
-
-		  await query(
-			`UPDATE vehicle_specs SET spec_json=$1, updated_at=NOW() WHERE vrm=$2`,
-			[spec, vrmUpper]
-		  );
-		}
-	  }
-	} else {
-	  const result = await fetchSpecDataFromAPI(vrmUpper);
-	  const statusCode = result?.statusCode;
-
-	  if (statusCode === "PlateInRetentionLastVehicleReturned") {
-		await query(
-		  `INSERT INTO vrm_provider_status (vrm, status_code, last_checked_at, retry_after)
-		   VALUES ($1, $2, NOW(), $3)
-		   ON CONFLICT (vrm)
-		   DO UPDATE SET status_code=$2, last_checked_at=NOW(), retry_after=$3`,
-		  [vrmUpper, statusCode, nextWeeklyRetryDate()]
-		);
-
-		await query("ROLLBACK");
-
-		return res.json({
-		  success: false,
-		  retention: true,
-		  message:
-			"This registration is currently in retention. Try again after the next DVLA/provider update.",
-		  spec: null
-		});
-	  }
-
-	  spec = result?.spec;
-	}
-
-
-	console.log("──────── VEHICLE SPEC DEBUG ────────");
-	console.log("VRM:", vrmUpper);
-	console.log("SPEC SOURCE:", cached.rowCount > 0 ? "DATABASE" : "API");
-	console.log("TOP LEVEL KEYS:", Object.keys(spec || {}));
-	console.log("HAS TOWING:", !!spec?.towing, spec?.towing);
-	console.log("HAS EV:", !!spec?.ev, spec?.ev);
-	console.log("SPEC VERSION:", spec?._meta?.spec_version);
-	console.log("────────────────────────────────────");
-
-	if (!spec) {
-	  await query("ROLLBACK");
-	  return res.status(404).json({ error: "Vehicle spec not found" });
-	}
-	console.log("✅ SPEC READY", {
-	  vrm: vrmUpper,
-	  hasMake: !!spec.make,
-	  hasModel: !!spec.model
-	});
-
-	
-	// --------------------------------------------------
-	// STEP 3.5: Snapshot handling (VRM may change vehicles)
-	// --------------------------------------------------
-	console.log("🧩 START SNAPSHOT LOGIC", vrmUpper);
-
-	// 🔐 fingerprint MUST be built from a valid spec
-	const fingerprint = buildFingerprint(spec);
-
-	if (!fingerprint) {
-	  console.error("❌ Fingerprint generation failed", {
-		vrm: vrmUpper,
-		specKeys: Object.keys(spec || {})
-	  });
-	  throw new Error("Fingerprint generation failed");
-	}
-
-	// Find latest snapshot for this VRM
-	const snapshotRow = await query(
-	  `
-	  SELECT id, fingerprint
-	  FROM vehicle_spec_snapshots
-	  WHERE vrm = $1
-	  ORDER BY created_at DESC
-	  LIMIT 1
-	  `,
-	  [vrmUpper]
-	);
-	console.log("📸 SNAPSHOT LOOKUP RESULT", {
-	  vrm: vrmUpper,
-	  rowCount: snapshotRow.rowCount,
-	  fingerprintMatch:
-		snapshotRow.rowCount > 0 &&
-		snapshotRow.rows[0].fingerprint === fingerprint
-	});
-
-
-	let snapshotId;
-
-	if (
-	  snapshotRow.rowCount > 0 &&
-	  snapshotRow.rows[0].fingerprint === fingerprint
-	) {
-	  // Same vehicle → reuse snapshot
-	  snapshotId = snapshotRow.rows[0].id;
-	} else {
-	  // New vehicle OR first time VRM seen → create snapshot
-	  const insertSnap = await query(
-		`
-		INSERT INTO vehicle_spec_snapshots (vrm, spec_json, fingerprint)
-		VALUES ($1, $2, $3)
-		RETURNING id
-		`,
-		[vrmUpper, spec, fingerprint]
-	  );
-
-	  snapshotId = insertSnap.rows[0].id;
-	}
-
-	console.log("🆔 SNAPSHOT ID SET", snapshotId);
-
-	if (!snapshotId) {
-	  console.error("❌ snapshotId missing before unlock insert", {
-		vrm: vrmUpper
-	  });
-	  throw new Error("snapshotId missing");
-	}
-
-    // --------------------------------------------------
-    // STEP 4: Persist unlock FIRST
-    // --------------------------------------------------
-    const unlockInsert = await query(
-      `INSERT INTO unlocked_specs (user_id, vrm, snapshot_id)
-	   VALUES ($1, $2, $3)
-       ON CONFLICT DO NOTHING
-       RETURNING 1`,
-      [user_id, vrmUpper, snapshotId]
-    );
-
-    // If insert failed, abort (safety net)
-    if (unlockInsert.rowCount === 0) {
-      await query("ROLLBACK");
-      return res.status(409).json({ error: "Unlock already exists" });
-    }
-
-    // --------------------------------------------------
-    // STEP 5: Increment usage ONLY AFTER successful insert
-    // --------------------------------------------------
-    if (isPremium && remainingFreeUnlocks > 0) {
-      await query(
-        `UPDATE users
-         SET monthly_unlocks_used = monthly_unlocks_used + 1
-         WHERE id=$1`,
+      // --------------------------------------------------
+      // STEP 2: Lock user row
+      // --------------------------------------------------
+      const userRow = await db.query(
+        `SELECT premium, premium_until, monthly_unlocks_used
+         FROM users
+         WHERE id=$1
+         FOR UPDATE`,
         [user_id]
       );
-    }
 
-    // --------------------------------------------------
-    // STEP 6: Cache spec
-    // --------------------------------------------------
-    await query(
-      `INSERT INTO vehicle_specs (vrm, spec_json)
-       VALUES ($1, $2)
-       ON CONFLICT (vrm)
-       DO UPDATE SET spec_json=$2, updated_at=NOW()`,
-      [vrmUpper, spec]
-    );
+      const u = userRow.rows[0];
+      const isPremium =
+        u.premium &&
+        (!u.premium_until || new Date(u.premium_until) > new Date());
 
-    await query("COMMIT");
+      let price = 1.49;
+      let remainingFreeUnlocks = null;
 
-    return res.json({
-      success: true,
-      price,
-      isPremium,
-      remainingFreeUnlocks:
-        remainingFreeUnlocks !== null
-          ? Math.max(remainingFreeUnlocks - 1, 0)
-          : null,
-      saved: true,
-      spec
+      if (isPremium) {
+        remainingFreeUnlocks = Math.max(3 - u.monthly_unlocks_used, 0);
+        if (remainingFreeUnlocks === 0) {
+          price = Number((1.49 * 0.75).toFixed(2));
+        }
+      }
+
+      // --------------------------------------------------
+      // STEP 3: Get spec (cache → API)
+      // --------------------------------------------------
+      let spec;
+
+      const cached = await db.query(
+        `SELECT spec_json FROM vehicle_specs WHERE vrm=$1`,
+        [vrmUpper]
+      );
+
+      if (cached.rowCount > 0) {
+        spec = cached.rows[0].spec_json;
+      } else {
+        const result = await fetchSpecDataFromAPI(vrmUpper);
+
+        if (result?.statusCode === "PlateInRetentionLastVehicleReturned") {
+          await db.query(
+            `INSERT INTO vrm_provider_status
+             (vrm, status_code, last_checked_at, retry_after)
+             VALUES ($1, $2, NOW(), $3)
+             ON CONFLICT (vrm)
+             DO UPDATE SET
+               status_code=$2,
+               last_checked_at=NOW(),
+               retry_after=$3`,
+            [vrmUpper, result.statusCode, nextWeeklyRetryDate()]
+          );
+
+          return {
+            status: 200,
+            body: {
+              success: false,
+              retention: true,
+              message:
+                "This registration is currently in retention. Try again later.",
+              spec: null
+            }
+          };
+        }
+
+        spec = result?.spec;
+      }
+
+      if (!spec) {
+        throw new Error("Spec fetch failed");
+      }
+
+      // --------------------------------------------------
+      // STEP 3.5: Snapshot (ALWAYS create – safe + simple)
+      // --------------------------------------------------
+      const fingerprint = buildFingerprint(spec);
+
+      if (!fingerprint) {
+        throw new Error("Fingerprint generation failed");
+      }
+
+      const snapRes = await db.query(
+        `
+        INSERT INTO vehicle_spec_snapshots (vrm, spec_json, fingerprint)
+        VALUES ($1, $2, $3)
+        RETURNING id
+        `,
+        [vrmUpper, spec, fingerprint]
+      );
+
+      const snapshotId = snapRes.rows[0]?.id;
+
+      if (!snapshotId) {
+        throw new Error("Snapshot insert failed");
+      }
+
+      // --------------------------------------------------
+      // STEP 4: Persist unlock
+      // --------------------------------------------------
+      await db.query(
+        `
+        INSERT INTO unlocked_specs (user_id, vrm, snapshot_id)
+        VALUES ($1, $2, $3)
+        `,
+        [user_id, vrmUpper, snapshotId]
+      );
+
+      // --------------------------------------------------
+      // STEP 5: Increment usage
+      // --------------------------------------------------
+      if (isPremium && remainingFreeUnlocks > 0) {
+        await db.query(
+          `
+          UPDATE users
+          SET monthly_unlocks_used = monthly_unlocks_used + 1
+          WHERE id=$1
+          `,
+          [user_id]
+        );
+      }
+
+      // --------------------------------------------------
+      // STEP 6: Cache spec
+      // --------------------------------------------------
+      await db.query(
+        `
+        INSERT INTO vehicle_specs (vrm, spec_json)
+        VALUES ($1, $2)
+        ON CONFLICT (vrm)
+        DO UPDATE SET spec_json=$2, updated_at=NOW()
+        `,
+        [vrmUpper, spec]
+      );
+
+      return {
+        status: 200,
+        body: {
+          success: true,
+          price,
+          isPremium,
+          remainingFreeUnlocks:
+            remainingFreeUnlocks !== null
+              ? Math.max(remainingFreeUnlocks - 1, 0)
+              : null,
+          saved: true,
+          spec
+        }
+      };
     });
 
+    return res.status(result.status).json(result.body);
   } catch (err) {
-    await query("ROLLBACK");
-    console.error("UNLOCK SPEC ERROR:", err);
-    res.status(500).json({ error: "Failed to unlock spec" });
+    console.error("❌ UNLOCK SPEC ERROR", err);
+    return res.status(500).json({ error: "Failed to unlock spec" });
   }
 });
+
 
 
 
