@@ -395,25 +395,48 @@ async function fetchSpecDataFromAPI(vrm) {
 router.post("/unlock-spec", authRequired, async (req, res) => {
   try {
     const { vrm } = req.body;
+    const user_id = req.user.id;
 
-    const result = await withTransaction(async (db) => {
-      return unlockSpec({
+    const payload = await withTransaction(async (db) => {
+      // 1) Perform unlock (creates snapshot + unlocked_specs + usage increment + cache)
+      const result = await unlockSpec({
         db,
         vrm,
-        user: req.user
+        user: req.user,
       });
+
+      // 2) Immediately return the authoritative unlocked list (same as restore endpoint)
+      const list = await db.query(
+        `
+        SELECT us.vrm, vss.spec_json
+        FROM unlocked_specs us
+        JOIN vehicle_spec_snapshots vss ON vss.id = us.snapshot_id
+        WHERE us.user_id = $1
+        ORDER BY us.unlocked_at DESC
+        `,
+        [user_id]
+      );
+
+      return {
+        // Keep spec too (useful for the details screen)
+        spec: result.spec,
+        unlocked_specs: list.rows.map((row) => ({
+          reg: row.vrm,
+          spec: row.spec_json,
+        })),
+      };
     });
 
     return res.json({
-	  success: true,
-	  reg: vrm.toUpperCase(),
-	  spec: result.spec
-	});
+      success: true,
+      spec: payload.spec,
+      unlocked_specs: payload.unlocked_specs,
+    });
   } catch (err) {
     console.error("❌ SPEC UNLOCK ERROR:", err);
     return res.status(500).json({
       success: false,
-      error: err.message
+      error: err.message,
     });
   }
 });
