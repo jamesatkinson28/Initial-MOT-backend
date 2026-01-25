@@ -450,6 +450,38 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
  * body: { vehicle_id }
  * auth: required
  */
+ 
+ router.get("/spec", authRequired, async (req, res) => {
+  try {
+    const vrm = req.query.vrm?.toUpperCase();
+    const user_id = req.user.id;
+
+    if (!vrm) {
+      return res.status(400).json({ error: "VRM required" });
+    }
+
+    const result = await query(
+      `
+      SELECT vss.spec_json
+      FROM unlocked_specs us
+      JOIN vehicle_spec_snapshots vss ON vss.id = us.snapshot_id
+      WHERE us.user_id = $1 AND us.vrm = $2
+      LIMIT 1
+      `,
+      [user_id, vrm]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(403).json({ error: "Spec not unlocked" });
+    }
+
+    return res.json(result.rows[0].spec_json);
+  } catch (err) {
+    console.error("❌ FETCH SPEC ERROR:", err);
+    return res.status(500).json({ error: "Failed to fetch spec" });
+  }
+});
+
 
 // ------------------------------------------------------------
 // RESTORE UNLOCKED SPECS (READ-ONLY)
