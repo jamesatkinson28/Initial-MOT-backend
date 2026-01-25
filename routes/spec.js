@@ -36,6 +36,22 @@ function nextWeeklyRetryDate() {
   return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 }
 
+function buildFingerprint(spec) {
+  return [
+    spec.make,
+    spec.model,
+    spec.year,
+    spec.engine?.capacity_cc,
+    spec.engine?.fuel_type,
+    spec.body?.style,
+    spec.weights?.gross
+  ]
+    .filter(Boolean)
+    .join("|")
+    .toLowerCase();
+}
+
+
 // ------------------------------------------------------------
 // CLEAN SPEC BUILDER (STATIC DATA ONLY)
 // Includes MPG, L/100km + Sound Levels
@@ -577,17 +593,58 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
 	  await query("ROLLBACK");
 	  return res.status(404).json({ error: "Vehicle spec not found" });
 	}
+	
+	// --------------------------------------------------
+	// STEP 3.5: Snapshot handling (VRM may change vehicles)
+	// --------------------------------------------------
+
+	const fingerprint = buildFingerprint(spec);
+
+	// Find latest snapshot for this VRM
+	const snapshotRow = await query(
+	  `
+	  SELECT id, fingerprint
+	  FROM vehicle_spec_snapshots
+	  WHERE vrm = $1
+	  ORDER BY created_at DESC
+	  LIMIT 1
+	  `,
+	  [vrmUpper]
+	);
+
+	let snapshotId;
+
+	if (
+	  snapshotRow.rowCount > 0 &&
+	  snapshotRow.rows[0].fingerprint === fingerprint
+	) {
+	  // Same vehicle → reuse snapshot
+	  snapshotId = snapshotRow.rows[0].id;
+	} else {
+	  // New vehicle OR first time VRM seen → create snapshot
+	  const insertSnap = await query(
+		`
+		INSERT INTO vehicle_spec_snapshots (vrm, spec_json, fingerprint)
+		VALUES ($1, $2, $3)
+		RETURNING id
+		`,
+		[vrmUpper, spec, fingerprint]
+	  );
+
+	  snapshotId = insertSnap.rows[0].id;
+	}
+
 
 
     // --------------------------------------------------
     // STEP 4: Persist unlock FIRST
     // --------------------------------------------------
     const unlockInsert = await query(
-      `INSERT INTO unlocked_specs (user_id, vrm)
-       VALUES ($1, $2)
+      `INSERT INTO unlocked_specs (user_id, vrm, snapshot_id)
+	   VALUES ($1, $2, $3)
        ON CONFLICT DO NOTHING
        RETURNING 1`,
-      [user_id, vrmUpper]
+      [user_id, vrmUpper, snapshotId]
     );
 
     // If insert failed, abort (safety net)
@@ -659,7 +716,7 @@ router.get("/spec/unlocked", authRequired, async (req, res) => {
       `
       SELECT us.vrm, vs.spec_json
       FROM unlocked_specs us
-      JOIN vehicle_specs vs ON vs.vrm = us.vrm
+      JOIN vehicle_spec_snapshots vss ON vss.id = us.snapshot_id
       WHERE us.user_id = $1
       ORDER BY us.unlocked_at DESC
       `,
