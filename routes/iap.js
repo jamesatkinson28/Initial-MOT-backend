@@ -1,192 +1,59 @@
 import express from "express";
 import { query } from "../db/db.js";
 import { authRequired } from "../middleware/auth.js";
-import { verifyAppleReceipt } from "../services/iap/apple.js";
-import { verifyGooglePurchase } from "../services/iap/google.js";
-import { unlockSpecForUser } from "../services/specUnlock.js";
-import axios from "axios";
-import { buildCleanSpec } from "../services/specBuilder.js";
-
-
-async function fetchSpecDataFromAPI(vrm) {
-  const url = `${process.env.SPEC_API_BASE_URL}/r2/lookup`;
-
-  const response = await axios.get(url, {
-    params: {
-      ApiKey: process.env.SPEC_API_KEY,
-      PackageName: "VehicleDetails",
-      Vrm: vrm,
-    },
-  });
-
-  const data = response.data;
-  if (!data?.Results?.VehicleDetails) return null;
-
-  // IMPORTANT: call the same cleaner as spec.js
-  // If buildCleanSpec is not exported yet, see note below
-  const cleanSpec = buildCleanSpec(data.Results);
-  return cleanSpec;
-}
 
 const router = express.Router();
 
+/**
+ * POST /api/iap/spec-unlock
+ * Body:
+ * {
+ *   vrm: "X6ATK",
+ *   sku: "spec_unlock_standard" | "spec_unlock_premium",
+ *   platform: "ios" | "android",
+ *   receipt?: string,
+ *   purchaseToken?: string
+ * }
+ */
 router.post("/spec-unlock", authRequired, async (req, res) => {
   try {
     const userId = req.user.id;
-    const {
-      vrm,
-      free,
-      platform,
-      receipt,
-      purchaseToken,
-      productId,
-    } = req.body;
+    const { vrm } = req.body;
 
     if (!vrm) {
       return res.status(400).json({ success: false, error: "Missing VRM" });
     }
 
-	const vrmUpper = vrm.toUpperCase();
-
-    // 1️⃣ Already unlocked?
+    // 1️⃣ Already unlocked? Return success
     const existing = await query(
-      `SELECT 1 FROM unlocked_specs WHERE user_id = $1 AND vrm = $2`,
-      [ userId, vrmUpper ]
+      `SELECT * FROM unlocked_specs WHERE user_id = $1 AND vrm = $2`,
+      [userId, vrm]
     );
 
     if (existing.rows.length > 0) {
-	  const snap = await query(
-		`
-		SELECT s.spec_json
-		FROM unlocked_specs u
-		JOIN vehicle_spec_snapshots s ON s.id = u.snapshot_id
-		WHERE u.user_id = $1 AND u.vrm = $2
-		`,
-		[userId, vrmUpper]
-	  );
-
-	  const spec = snap.rows[0]?.spec_json;
-
-	  if (!spec) {
-		return res.status(404).json({
-		  success: false,
-		  error: "Unlocked spec snapshot not found",
-		});
-	  }
-
-	  // re-cache it
-	  await query(
-		`
-		INSERT INTO vehicle_specs (vrm, spec_json)
-		VALUES ($1, $2)
-		ON CONFLICT (vrm)
-		DO UPDATE SET spec_json = EXCLUDED.spec_json
-		`,
-		[vrmUpper, spec]
-	  );
-
-	  return res.json({
-		success: true,
-		alreadyUnlocked: true,
-		spec,
-	  });
-	}
-
-    // 2️⃣ FREE unlock path (premium users only, legacy contract)
-	if (free === true) {
-	  const freeRes = await query(
-		`
-		UPDATE users
-		SET monthly_unlocks_used = monthly_unlocks_used + 1
-		WHERE id = $1
-		  AND premium = true
-		  AND monthly_unlocks_used < 3
-		RETURNING monthly_unlocks_used
-		`,
-		[userId]
-	  );
-
-	  if (freeRes.rowCount === 0) {
-		return res.status(403).json({
-		  success: false,
-		  error: "No free unlocks remaining or not a premium user",
-		});
-	  }
-	} else {
-
-
-      // 3️⃣ PAID unlock path — validate store receipt
-
-      if (platform === "ios") {
-        const result = await verifyAppleReceipt(receipt);
-        if (!result.valid) {
-          return res.status(401).json({ success: false, error: "Invalid Apple receipt" });
-        }
-      }
-
-      if (platform === "android") {
-        const result = await verifyGooglePurchase({
-          packageName: process.env.GOOGLE_PACKAGE_NAME,
-          productId,
-          purchaseToken,
-        });
-
-        if (!result.valid) {
-          return res.status(401).json({ success: false, error: "Invalid Google purchase" });
-        }
-      }
+      return res.json({
+        success: true,
+        alreadyUnlocked: true,
+      });
     }
 
-    // 4️⃣ Unlock spec
+    // 2️⃣ Insert unlock (purchase already happened on store)
+    await query(
+      `INSERT INTO unlocked_specs (user_id, vrm)
+       VALUES ($1, $2)`,
+      [userId, vrm]
+    );
 
-
-    // 4️⃣ Fetch spec
-	const spec = await fetchSpecDataFromAPI(vrmUpper);
-
-	if (!spec) {
-	  return res.status(404).json({
-		success: false,
-		error: "Vehicle spec not found",
-	  });
-	}
-
-	// 5️⃣ Delegate unlock (snapshots + unlocked_specs)
-	const result = await unlockSpecForUser({
-	  userId,
-	  vrm: vrmUpper,
-	  spec,
-	});
-
-	// ✅ Restore old Step-6 invariant: always cache a real spec
-	const finalSpec = result.spec || spec;
-
-	if (!finalSpec) {
-	  throw new Error("Invariant violated: no spec available to cache");
-	}
-	console.log("🧪 CACHING SPEC INTO vehicle_specs:", vrmUpper);
-
-
-	// 🔁 Cache spec for frontend + restore
-	await query(
-	  `
-	  INSERT INTO vehicle_specs (vrm, spec_json)
-	  VALUES ($1, $2)
-	  ON CONFLICT (vrm)
-	  DO UPDATE SET spec_json = EXCLUDED.spec_json, updated_at = NOW()
-	  `,
-	  [vrmUpper, finalSpec]
-	);
-	console.log("✅ CACHED SPEC OK:", vrmUpper);
-
-	return res.json({
-	  success: true,
-	  unlocked: !result.alreadyUnlocked,
-	  spec: finalSpec,
-	});
-
+    return res.json({
+      success: true,
+      unlocked: true,
+    });
   } catch (err) {
     console.error("❌ IAP SPEC UNLOCK ERROR:", err);
-    res.status(500).json({ success: false, error: "Failed to unlock spec" });
+    res.status(500).json({
+      success: false,
+      error: "Failed to unlock spec",
+    });
   }
 });
 
