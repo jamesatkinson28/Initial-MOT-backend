@@ -405,9 +405,10 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
     });
 
     return res.json({
-      success: true,
-      ...result
-    });
+	  success: true,
+	  reg: vrm.toUpperCase(),
+	  spec: result.spec
+	});
   } catch (err) {
     console.error("❌ SPEC UNLOCK ERROR:", err);
     return res.status(500).json({
