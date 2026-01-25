@@ -1,3 +1,7 @@
+import { buildFingerprint } from "../routes/spec.js";
+import { fetchSpecDataFromAPI } from "./specProvider.js";
+
+
 export async function unlockSpec({ db, vrm, user }) {
   if (!vrm) {
     throw new Error("VRM required");

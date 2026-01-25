@@ -37,7 +37,7 @@ function nextWeeklyRetryDate() {
   return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 }
 
-function buildFingerprint(spec) {
+export function buildFingerprint(spec) {
   if (!spec) return null;
 
   return [
@@ -58,7 +58,7 @@ function buildFingerprint(spec) {
 // CLEAN SPEC BUILDER (STATIC DATA ONLY)
 // Includes MPG, L/100km + Sound Levels
 // ------------------------------------------------------------
-function buildCleanSpec(apiResults) {
+export function buildCleanSpec(apiResults) {
   const vd = apiResults?.VehicleDetails || {};
   const vId = vd.VehicleIdentification || {};
   const vTech = vd.DvlaTechnicalDetails || {};
