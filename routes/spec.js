@@ -392,9 +392,16 @@ async function fetchSpecDataFromAPI(vrm) {
 
 router.post("/unlock-spec", authRequired, async (req, res) => {
   const client = await query("BEGIN").catch(() => null);
+  const dbName = await query(`SELECT current_database() as db`);
+  console.log("🧠 Connected DB:", dbName.rows[0].db);
 
   try {
     const { vrm } = req.body;
+	console.log("🚀 UNLOCK SPEC START", {
+	  vrm,
+	  user_id: req.user.id
+	});
+
     if (!vrm) return res.status(400).json({ error: "VRM required" });
 
     const vrmUpper = vrm.toUpperCase();
@@ -593,11 +600,17 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
 	  await query("ROLLBACK");
 	  return res.status(404).json({ error: "Vehicle spec not found" });
 	}
+	console.log("✅ SPEC READY", {
+	  vrm: vrmUpper,
+	  hasMake: !!spec.make,
+	  hasModel: !!spec.model
+	});
+
 	
 	// --------------------------------------------------
 	// STEP 3.5: Snapshot handling (VRM may change vehicles)
 	// --------------------------------------------------
-
+	console.log("🧩 START SNAPSHOT LOGIC", vrmUpper);
 	const fingerprint = buildFingerprint(spec);
 
 	// Find latest snapshot for this VRM
@@ -611,6 +624,14 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
 	  `,
 	  [vrmUpper]
 	);
+	console.log("📸 SNAPSHOT LOOKUP RESULT", {
+	  vrm: vrmUpper,
+	  rowCount: snapshotRow.rowCount,
+	  fingerprintMatch:
+		snapshotRow.rowCount > 0 &&
+		snapshotRow.rows[0].fingerprint === fingerprint
+	});
+
 
 	let snapshotId;
 
@@ -634,7 +655,14 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
 	  snapshotId = insertSnap.rows[0].id;
 	}
 
+	console.log("🆔 SNAPSHOT ID SET", snapshotId);
 
+	if (!snapshotId) {
+	  console.error("❌ snapshotId missing before unlock insert", {
+		vrm: vrmUpper
+	  });
+	  throw new Error("snapshotId missing");
+	}
 
     // --------------------------------------------------
     // STEP 4: Persist unlock FIRST
