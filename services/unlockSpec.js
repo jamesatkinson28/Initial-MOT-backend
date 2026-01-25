@@ -1,16 +1,13 @@
 import { buildFingerprint } from "../routes/spec.js";
 import { fetchSpecDataFromAPI } from "./specProvider.js";
 
-
 export async function unlockSpec({ db, vrm, user }) {
-  if (!vrm) {
-    throw new Error("VRM required");
-  }
+  if (!vrm) throw new Error("VRM required");
 
   const vrmUpper = vrm.toUpperCase();
   const user_id = user.id;
 
-  // Already unlocked?
+  // Already unlocked? (no mutation needed)
   const existing = await db.query(
     `SELECT snapshot_id FROM unlocked_specs WHERE user_id=$1 AND vrm=$2`,
     [user_id, vrmUpper]
@@ -24,7 +21,21 @@ export async function unlockSpec({ db, vrm, user }) {
     return { spec: snap.rows[0]?.spec_json };
   }
 
-  // Fetch spec (cache first)
+  // 🔐 Lock user ONLY when unlocking
+  const userRow = await db.query(
+    `SELECT premium, premium_until, monthly_unlocks_used
+     FROM users
+     WHERE id=$1
+     FOR UPDATE`,
+    [user_id]
+  );
+
+  const u = userRow.rows[0];
+  const isPremium =
+    u.premium &&
+    (!u.premium_until || new Date(u.premium_until) > new Date());
+
+  // Fetch spec
   let spec;
   const cached = await db.query(
     `SELECT spec_json FROM vehicle_specs WHERE vrm=$1`,
@@ -60,6 +71,17 @@ export async function unlockSpec({ db, vrm, user }) {
     [user_id, vrmUpper, snapshotId]
   );
 
+  // Increment free unlocks (safe)
+  if (isPremium && u.monthly_unlocks_used < 3) {
+    await db.query(
+      `UPDATE users
+       SET monthly_unlocks_used = monthly_unlocks_used + 1
+       WHERE id=$1`,
+      [user_id]
+    );
+  }
+
+  // Cache for frontend / restore
   await db.query(
     `
     INSERT INTO vehicle_specs (vrm, spec_json)
