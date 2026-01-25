@@ -37,20 +37,21 @@ function nextWeeklyRetryDate() {
 }
 
 function buildFingerprint(spec) {
+  if (!spec) return null;
+
   return [
-    spec.make,
-    spec.model,
-    spec.year,
-    spec.engine?.capacity_cc,
+    spec.identity?.make,
+    spec.identity?.model,
+    spec.identity?.year_of_manufacture,
+    spec.engine?.engine_cc,
     spec.engine?.fuel_type,
-    spec.body?.style,
-    spec.weights?.gross
+    spec.identity?.body_style,
+    spec.weights?.gross_vehicle_weight_kg
   ]
     .filter(Boolean)
     .join("|")
     .toLowerCase();
 }
-
 
 // ------------------------------------------------------------
 // CLEAN SPEC BUILDER (STATIC DATA ONLY)
@@ -611,7 +612,17 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
 	// STEP 3.5: Snapshot handling (VRM may change vehicles)
 	// --------------------------------------------------
 	console.log("🧩 START SNAPSHOT LOGIC", vrmUpper);
+
+	// 🔐 fingerprint MUST be built from a valid spec
 	const fingerprint = buildFingerprint(spec);
+
+	if (!fingerprint) {
+	  console.error("❌ Fingerprint generation failed", {
+		vrm: vrmUpper,
+		specKeys: Object.keys(spec || {})
+	  });
+	  throw new Error("Fingerprint generation failed");
+	}
 
 	// Find latest snapshot for this VRM
 	const snapshotRow = await query(
@@ -741,15 +752,15 @@ router.get("/spec/unlocked", authRequired, async (req, res) => {
     const user_id = req.user.id;
 
     const result = await query(
-      `
-      SELECT us.vrm, vs.spec_json
-      FROM unlocked_specs us
-      JOIN vehicle_spec_snapshots vss ON vss.id = us.snapshot_id
-      WHERE us.user_id = $1
-      ORDER BY us.unlocked_at DESC
-      `,
-      [user_id]
-    );
+	  `
+	  SELECT us.vrm, vss.spec_json
+	  FROM unlocked_specs us
+	  JOIN vehicle_spec_snapshots vss ON vss.id = us.snapshot_id
+	  WHERE us.user_id = $1
+	  ORDER BY us.unlocked_at DESC
+	  `,
+	  [user_id]
+	);
 
     return res.json(
       result.rows.map(row => ({
