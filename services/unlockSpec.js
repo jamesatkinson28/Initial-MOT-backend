@@ -21,7 +21,7 @@ export async function unlockSpec({ db, vrm, user }) {
       `SELECT spec_json FROM vehicle_spec_snapshots WHERE id=$1`,
       [existing.rows[0].snapshot_id]
     );
-    return { alreadyUnlocked: true, spec: snap.rows[0]?.spec_json };
+    return { spec: snap.rows[0]?.spec_json };
   }
 
   // Fetch spec (cache first)
@@ -70,5 +70,5 @@ export async function unlockSpec({ db, vrm, user }) {
     [vrmUpper, spec]
   );
 
-  return { unlocked: true, spec };
+  return { spec };
 }
