@@ -53,17 +53,45 @@ export async function unlockSpec({ db, vrm, user }) {
   const fingerprint = buildFingerprint(spec);
   if (!fingerprint) throw new Error("Fingerprint failed");
 
-  const snapRes = await db.query(
+// --------------------------------------------------
+// SNAPSHOT DEDUPLICATION (GLOBAL, SHARED)
+// --------------------------------------------------
+
+// 1️⃣ Try to reuse an existing snapshot for this VRM + fingerprint
+  const existingSnapshot = await db.query(
     `
-    INSERT INTO vehicle_spec_snapshots (vrm, spec_json, fingerprint)
-    VALUES ($1, $2, $3)
-    RETURNING id
+    SELECT id
+    FROM vehicle_spec_snapshots
+    WHERE vrm = $1 AND fingerprint = $2
+    ORDER BY created_at DESC
+    LIMIT 1
     `,
-    [vrmUpper, spec, fingerprint]
+    [vrmUpper, fingerprint]
   );
 
-  const snapshotId = snapRes.rows[0]?.id;
-  if (!snapshotId) throw new Error("Snapshot insert failed");
+  let snapshotId;
+
+  if (existingSnapshot.rowCount > 0) {
+    // ✅ Reuse existing snapshot (user 2 uses user 1’s snapshot)
+    snapshotId = existingSnapshot.rows[0].id;
+  } else {
+    // 🆕 New vehicle state → create new snapshot
+    const snapRes = await db.query(
+      `
+      INSERT INTO vehicle_spec_snapshots (vrm, spec_json, fingerprint)
+      VALUES ($1, $2, $3)
+      RETURNING id
+      `,
+      [vrmUpper, spec, fingerprint]
+    );
+
+    snapshotId = snapRes.rows[0].id;
+  }
+
+  if (!snapshotId) {
+    throw new Error("Snapshot resolution failed");
+  }
+
 
   await db.query(
     `INSERT INTO unlocked_specs (user_id, vrm, snapshot_id)
