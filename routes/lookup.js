@@ -2,6 +2,7 @@ import express from "express";
 import fetch from "node-fetch";
 import axios from "axios";
 import { getToken } from "../lib/dvsaToken.js";
+import { query } from "../db/db.js";
 
 const router = express.Router();
 
