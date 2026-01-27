@@ -120,18 +120,6 @@ export async function unlockSpec({ db, vrm, user, dvlaVehicle }) {
   if (!currentFingerprint) {
     throw new Error("Fingerprint generation failed");
   }
-
-
-  if (!coreIdentity) {
-    throw new Error("DVLA core identity missing");
-  }
-
-  const currentFingerprint = buildFingerprint(coreIdentity);
-
-  if (!currentFingerprint) {
-    throw new Error("Fingerprint generation failed");
-  }
-
   // --------------------------------------------------
   // SNAPSHOT RESOLUTION (NO API UNLESS NEEDED)
   // --------------------------------------------------
