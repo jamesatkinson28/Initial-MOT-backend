@@ -50,6 +50,25 @@ router.get("/", async (req, res) => {
     }
 
     const vehicle = await dvlaRes.json();
+	
+	// ─────────────────────────────────────────────
+	// Cache DVLA lookup (temporary DB cache)
+	// ─────────────────────────────────────────────
+	try {
+	  await query(
+		`
+		INSERT INTO dvla_lookup_cache (vrm, dvla_json, fetched_at)
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (vrm)
+		DO UPDATE SET dvla_json = EXCLUDED.dvla_json, fetched_at = NOW()
+		`,
+		[normalisedVRM, vehicle]
+	  );
+	} catch (e) {
+	  console.error("DVLA cache write failed (non-fatal):", e.message);
+	}
+
+	
 
     // ─────────────────────────────────────────────
     // 2️⃣ MOT (secondary, cached, non-fatal)

@@ -1,6 +1,7 @@
 import { buildFingerprint } from "../routes/spec.js";
 import { fetchSpecDataFromAPI } from "./specProvider.js";
 
+const DVLA_CACHE_TTL_HOURS = 24;
 /**
  * Build a spec-shaped core identity object from DVLA lookup data
  * (NO provider data, NO DVSA free text)
@@ -84,7 +85,42 @@ export async function unlockSpec({ db, vrm, user, dvlaVehicle }) {
   // --------------------------------------------------
   // BUILD CURRENT FINGERPRINT FROM DVLA CORE IDENTITY
   // --------------------------------------------------
-  const coreIdentity = buildCoreIdentityFromDvla(dvlaVehicle);
+  // --------------------------------------------------
+  // LOAD DVLA CORE IDENTITY FROM CACHE (TTL enforced)
+  // --------------------------------------------------
+
+  const dvlaRow = await db.query(
+    `
+    SELECT dvla_json, fetched_at
+    FROM dvla_lookup_cache
+    WHERE vrm = $1
+    `,
+    [vrmUpper]
+  );
+ 
+  if (dvlaRow.rowCount === 0) {
+    throw new Error("DVLA lookup data not available. Please search vehicle again.");
+  }
+
+  const fetchedAt = new Date(dvlaRow.rows[0].fetched_at);
+  const ageHours = (Date.now() - fetchedAt.getTime()) / 36e5;
+
+  if (ageHours > 24) {
+    throw new Error("DVLA lookup data expired. Please refresh vehicle search.");
+  }
+
+  const coreIdentity = buildCoreIdentityFromDvla(dvlaRow.rows[0].dvla_json);
+
+  if (!coreIdentity) {
+    throw new Error("Failed to build DVLA core identity");
+   }
+
+  const currentFingerprint = buildFingerprint(coreIdentity);
+
+  if (!currentFingerprint) {
+    throw new Error("Fingerprint generation failed");
+  }
+
 
   if (!coreIdentity) {
     throw new Error("DVLA core identity missing");
