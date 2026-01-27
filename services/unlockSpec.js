@@ -1,32 +1,50 @@
 import { buildFingerprint } from "../routes/spec.js";
 import { fetchSpecDataFromAPI } from "./specProvider.js";
 
-export async function unlockSpec({ db, vrm, user }) {
+/**
+ * Build a spec-shaped core identity object from DVLA lookup data
+ * (NO provider data, NO DVSA free text)
+ */
+function buildCoreIdentityFromDvla(dvlaVehicle) {
+  if (!dvlaVehicle) return null;
+
+  return {
+    identity: {
+      make: dvlaVehicle.make || null,
+      model: dvlaVehicle.model || null, // DVLA short model if present
+      year_of_manufacture: dvlaVehicle.manufactureDate
+        ? new Date(dvlaVehicle.manufactureDate).getFullYear()
+        : null,
+      body_style: dvlaVehicle.bodyType || null,
+    },
+    engine: {
+      engine_cc: dvlaVehicle.engineCapacity
+        ? Number(dvlaVehicle.engineCapacity)
+        : null,
+      fuel_type: dvlaVehicle.fuelType || null,
+    },
+  };
+}
+
+/**
+ * MAIN UNLOCK FUNCTION
+ */
+export async function unlockSpec({ db, vrm, user, dvlaVehicle }) {
   if (!vrm) throw new Error("VRM required");
 
   const vrmUpper = vrm.toUpperCase();
   const user_id = user.id;
 
-  // Already unlocked? (no mutation needed)
-  const existing = await db.query(
-    `SELECT snapshot_id FROM unlocked_specs WHERE user_id=$1 AND vrm=$2`,
-    [user_id, vrmUpper]
-  );
-
-  if (existing.rowCount > 0) {
-    const snap = await db.query(
-      `SELECT spec_json FROM vehicle_spec_snapshots WHERE id=$1`,
-      [existing.rows[0].snapshot_id]
-    );
-    return { spec: snap.rows[0]?.spec_json };
-  }
-
-  // 🔐 Lock user ONLY when unlocking
+  // --------------------------------------------------
+  // LOCK USER ROW (monthly unlock tracking)
+  // --------------------------------------------------
   const userRow = await db.query(
-    `SELECT premium, premium_until, monthly_unlocks_used
-     FROM users
-     WHERE id=$1
-     FOR UPDATE`,
+    `
+    SELECT premium, premium_until, monthly_unlocks_used
+    FROM users
+    WHERE id=$1
+    FOR UPDATE
+    `,
     [user_id]
   );
 
@@ -35,90 +53,136 @@ export async function unlockSpec({ db, vrm, user }) {
     u.premium &&
     (!u.premium_until || new Date(u.premium_until) > new Date());
 
-  // Fetch spec
-  let spec;
-  const cached = await db.query(
-    `SELECT spec_json FROM vehicle_specs WHERE vrm=$1`,
-    [vrmUpper]
+  // --------------------------------------------------
+  // ALREADY UNLOCKED?
+  // --------------------------------------------------
+  const existing = await db.query(
+    `
+    SELECT snapshot_id
+    FROM unlocked_specs
+    WHERE user_id=$1 AND vrm=$2
+    `,
+    [user_id, vrmUpper]
   );
 
-  if (cached.rowCount > 0) {
-    spec = cached.rows[0].spec_json;
-  } else {
-    const result = await fetchSpecDataFromAPI(vrmUpper);
-    if (!result?.spec) throw new Error("Spec fetch failed");
-    spec = result.spec;
+  if (existing.rowCount > 0) {
+    const snap = await db.query(
+      `
+      SELECT spec_json
+      FROM vehicle_spec_snapshots
+      WHERE id=$1
+      `,
+      [existing.rows[0].snapshot_id]
+    );
+
+    return {
+      alreadyUnlocked: true,
+      spec: snap.rows[0]?.spec_json || null,
+    };
   }
 
-  const fingerprint = buildFingerprint(spec);
-  if (!fingerprint) throw new Error("Fingerprint failed");
+  // --------------------------------------------------
+  // BUILD CURRENT FINGERPRINT FROM DVLA CORE IDENTITY
+  // --------------------------------------------------
+  const coreIdentity = buildCoreIdentityFromDvla(dvlaVehicle);
 
-// --------------------------------------------------
-// SNAPSHOT DEDUPLICATION (GLOBAL, SHARED)
-// --------------------------------------------------
+  if (!coreIdentity) {
+    throw new Error("DVLA core identity missing");
+  }
 
-// 1️⃣ Try to reuse an existing snapshot for this VRM + fingerprint
-  const existingSnapshot = await db.query(
+  const currentFingerprint = buildFingerprint(coreIdentity);
+
+  if (!currentFingerprint) {
+    throw new Error("Fingerprint generation failed");
+  }
+
+  // --------------------------------------------------
+  // SNAPSHOT RESOLUTION (NO API UNLESS NEEDED)
+  // --------------------------------------------------
+  const latestSnapshot = await db.query(
     `
-    SELECT id
+    SELECT id, fingerprint, spec_json
     FROM vehicle_spec_snapshots
-    WHERE vrm = $1 AND fingerprint = $2
+    WHERE vrm=$1
     ORDER BY created_at DESC
     LIMIT 1
     `,
-    [vrmUpper, fingerprint]
+    [vrmUpper]
   );
 
   let snapshotId;
+  let spec;
 
-  if (existingSnapshot.rowCount > 0) {
-    // ✅ Reuse existing snapshot (user 2 uses user 1’s snapshot)
-    snapshotId = existingSnapshot.rows[0].id;
-  } else {
-    // 🆕 New vehicle state → create new snapshot
-    const snapRes = await db.query(
+  if (latestSnapshot.rowCount === 0) {
+    // 🆕 First ever unlock for this VRM
+    const result = await fetchSpecDataFromAPI(vrmUpper);
+    if (!result?.spec) throw new Error("Spec fetch failed");
+
+    spec = result.spec;
+
+    const ins = await db.query(
       `
       INSERT INTO vehicle_spec_snapshots (vrm, spec_json, fingerprint)
       VALUES ($1, $2, $3)
       RETURNING id
       `,
-      [vrmUpper, spec, fingerprint]
+      [vrmUpper, spec, currentFingerprint]
     );
 
-    snapshotId = snapRes.rows[0].id;
+    snapshotId = ins.rows[0].id;
+
+  } else if (latestSnapshot.rows[0].fingerprint === currentFingerprint) {
+    // ✅ Same vehicle → reuse snapshot, NO PROVIDER CALL
+    snapshotId = latestSnapshot.rows[0].id;
+    spec = latestSnapshot.rows[0].spec_json;
+
+  } else {
+    // 🔁 Plate reused / identity changed
+    const result = await fetchSpecDataFromAPI(vrmUpper);
+    if (!result?.spec) throw new Error("Spec fetch failed");
+
+    spec = result.spec;
+
+    const ins = await db.query(
+      `
+      INSERT INTO vehicle_spec_snapshots (vrm, spec_json, fingerprint)
+      VALUES ($1, $2, $3)
+      RETURNING id
+      `,
+      [vrmUpper, spec, currentFingerprint]
+    );
+
+    snapshotId = ins.rows[0].id;
   }
 
   if (!snapshotId) {
     throw new Error("Snapshot resolution failed");
   }
 
-
+  // --------------------------------------------------
+  // LINK USER → SNAPSHOT
+  // --------------------------------------------------
   await db.query(
-    `INSERT INTO unlocked_specs (user_id, vrm, snapshot_id)
-     VALUES ($1, $2, $3)`,
+    `
+    INSERT INTO unlocked_specs (user_id, vrm, snapshot_id)
+    VALUES ($1, $2, $3)
+    `,
     [user_id, vrmUpper, snapshotId]
   );
 
-  // Increment free unlocks (safe)
+  // --------------------------------------------------
+  // INCREMENT MONTHLY FREE UNLOCKS (PREMIUM ONLY)
+  // --------------------------------------------------
   if (isPremium && u.monthly_unlocks_used < 3) {
     await db.query(
-      `UPDATE users
-       SET monthly_unlocks_used = monthly_unlocks_used + 1
-       WHERE id=$1`,
+      `
+      UPDATE users
+      SET monthly_unlocks_used = monthly_unlocks_used + 1
+      WHERE id=$1
+      `,
       [user_id]
     );
   }
 
-  // Cache for frontend / restore
-  await db.query(
-    `
-    INSERT INTO vehicle_specs (vrm, spec_json)
-    VALUES ($1, $2)
-    ON CONFLICT (vrm)
-    DO UPDATE SET spec_json=$2, updated_at=NOW()
-    `,
-    [vrmUpper, spec]
-  );
-
-  return { spec };
+  return { unlocked: true, spec };
 }
