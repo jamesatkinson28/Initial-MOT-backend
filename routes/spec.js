@@ -44,11 +44,12 @@ export function buildFingerprint(spec) {
 
   return [
     spec.identity?.make,                 // DVLA
-    spec.identity?.model_family,         // DVLA short model (e.g. "golf")
+    spec.identity?.model,        // DVLA short model (e.g. "golf")
     spec.identity?.year_of_manufacture,  // DVLA
     spec.engine?.engine_cc,              // DVLA
     spec.engine?.fuel_type,              // DVLA
-    spec.identity?.body_style             // DVLA
+    spec.identity?.body_style
+    spec.identity?.firstRegistered         // DVLA
   ]
     .filter(Boolean)
     .join("|")
