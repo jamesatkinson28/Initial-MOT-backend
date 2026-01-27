@@ -43,19 +43,17 @@ export function buildFingerprint(spec) {
   if (!spec) return null;
 
   return [
-    spec.identity?.make,                 // DVLA
-    spec.identity?.model,        // DVLA short model (e.g. "golf")
-    spec.identity?.year_of_manufacture,  // DVLA
-    spec.engine?.engine_cc,              // DVLA
-    spec.engine?.fuel_type,              // DVLA
-    spec.identity?.body_style
-    spec.identity?.firstRegistered         // DVLA
+    spec.identity?.make,                 // DVLA – stable
+    spec.identity?.model,                // DVLA short model (optional)
+    spec.identity?.year_of_manufacture,  // DVLA – stable
+    spec.engine?.engine_cc,              // DVLA – stable
+    spec.engine?.fuel_type,              // DVLA – stable
+    spec.identity?.body_style            // DVLA – stable
   ]
     .filter(Boolean)
     .join("|")
     .toLowerCase();
 }
-
 
 // ------------------------------------------------------------
 // CLEAN SPEC BUILDER (STATIC DATA ONLY)
