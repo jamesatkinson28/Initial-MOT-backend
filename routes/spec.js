@@ -40,7 +40,7 @@ function nextWeeklyRetryDate() {
 export function buildFingerprint(spec) {
   if (!spec) return null;
 
-  return [
+  const base = [
     spec.identity?.make,
     spec.identity?.model,
     spec.identity?.year_of_manufacture,
@@ -52,6 +52,11 @@ export function buildFingerprint(spec) {
     .filter(Boolean)
     .join("|")
     .toLowerCase();
+
+  // 🔧 DEV-ONLY fingerprint salt (empty in prod)
+  const DEV_SALT = process.env.FINGERPRINT_SALT || "";
+
+  return `${base}${DEV_SALT}`;
 }
 
 // ------------------------------------------------------------
