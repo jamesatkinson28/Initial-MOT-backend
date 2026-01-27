@@ -42,24 +42,19 @@ function nextWeeklyRetryDate() {
 export function buildFingerprint(spec) {
   if (!spec) return null;
 
-  const base = [
-    spec.identity?.make,
-    spec.identity?.model,
-    spec.identity?.year_of_manufacture,
-    spec.engine?.engine_cc,
-    spec.engine?.fuel_type,
-    spec.identity?.body_style,
-    spec.weights?.gross_vehicle_weight_kg
+  return [
+    spec.identity?.make,                 // DVLA
+    spec.identity?.model_family,         // DVLA short model (e.g. "golf")
+    spec.identity?.year_of_manufacture,  // DVLA
+    spec.engine?.engine_cc,              // DVLA
+    spec.engine?.fuel_type,              // DVLA
+    spec.identity?.body_style             // DVLA
   ]
     .filter(Boolean)
     .join("|")
     .toLowerCase();
-
-  // 🔧 DEV-ONLY fingerprint salt (empty in prod)
-  const DEV_SALT = process.env.FINGERPRINT_SALT || "";
-
-  return `${base}${DEV_SALT}`;
 }
+
 
 // ------------------------------------------------------------
 // CLEAN SPEC BUILDER (STATIC DATA ONLY)
