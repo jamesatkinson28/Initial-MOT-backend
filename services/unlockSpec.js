@@ -38,11 +38,6 @@ export async function unlockSpec({ db, vrm, user }) {
 
   const vrmUpper = vrm.toUpperCase();
   const user_id = user.id;
-  
-  console.log("🔓 SPEC UNLOCK START", {
-  vrm: vrmUpper,
-  user_id: user.id,
-});
 
 
   // --------------------------------------------------
@@ -123,21 +118,12 @@ export async function unlockSpec({ db, vrm, user }) {
   if (!coreIdentity) {
     throw new Error("Failed to build DVLA core identity");
    }
-   console.log("🪪 DVLA IDENTITY LOADED", {
-  vrm: vrmUpper,
-  monthOfFirstRegistration:
-    coreIdentity.identity?.monthOfFirstRegistration,
-});
 
   const currentFingerprint = buildFingerprint(coreIdentity);
   
   if (!currentFingerprint) {
     throw new Error("Fingerprint generation failed");
   }
-  console.log("🧬 FINGERPRINT BUILT", {
-  vrm: vrmUpper,
-  fingerprint: currentFingerprint,
-});
 
   
   // --------------------------------------------------
@@ -172,10 +158,6 @@ if (
   // ✅ Same vehicle, reuse snapshot
   snapshotId = lastSnapshot.rows[0].id;
   
-    console.log("♻️ SNAPSHOT REUSED", {
-    vrm: vrmUpper,
-    snapshotId,
-  });
 } else {
   // 🚨 Plate reuse OR first time seen
   plateReused = lastSnapshot.rowCount > 0;
@@ -201,19 +183,11 @@ if (
   providerStatus.rows[0].retry_after &&
   new Date(providerStatus.rows[0].retry_after) > new Date()
 ) {
-	  console.warn("⏳ PROVIDER RETRY BLOCKED", {
-    vrm: vrmUpper,
-    retry_after: providerStatus.rows[0].retry_after,
-  });
   throw new Error(
     "This registration is temporarily unavailable due to DVLA updates."
   );
 }
 
-console.log("🌐 PROVIDER API CALL", {
-  vrm: vrmUpper,
-  reason: plateReused ? "fingerprint-mismatch" : "no-snapshot",
-});
   // Fetch provider spec (only now)
   const result = await fetchSpecDataFromAPI(vrmUpper);
   if (result?.statusCode === "PlateInRetentionLastVehicleReturned") {
@@ -256,11 +230,6 @@ console.log("🌐 PROVIDER API CALL", {
   );
 
   snapshotId = snapInsert.rows[0].id;
-  
-console.log("🆕 SNAPSHOT CREATED", {
-  vrm: vrmUpper,
-  snapshotId,
-});
 }
 
   if (!snapshotId) {
@@ -277,14 +246,6 @@ console.log("🆕 SNAPSHOT CREATED", {
   );
 
   const spec = specRow.rows[0]?.spec_json || null;
-
-console.log("📸 SNAPSHOT LOOKUP", {
-  vrm: vrmUpper,
-  found: lastSnapshot.rowCount > 0,
-  fingerprintMatch:
-    lastSnapshot.rowCount > 0 &&
-    lastSnapshot.rows[0].fingerprint === currentFingerprint,
-});
 
   // --------------------------------------------------
   // LINK USER → SNAPSHOT
@@ -311,12 +272,6 @@ console.log("📸 SNAPSHOT LOOKUP", {
       [user_id]
     );
   }
-  console.log("✅ SPEC UNLOCK COMPLETE", {
-  vrm: vrmUpper,
-  snapshotId,
-  plateReused,
-});
-
 
   return {
     unlocked: true,
