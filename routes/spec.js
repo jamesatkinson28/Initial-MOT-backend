@@ -45,7 +45,7 @@ export function buildFingerprint(spec) {
   return [
     spec.identity?.make,                 // DVLA – stable
     spec.identity?.model,                // DVLA short model (optional)
-    spec.identity?.year_of_manufacture,  // DVLA – stable
+    spec.identity?.monthOfFirstRegistration, // DVLA – stable
     spec.engine?.engine_cc,              // DVLA – stable
     spec.engine?.fuel_type,              // DVLA – stable
     spec.identity?.body_style            // DVLA – stable
