@@ -11,14 +11,15 @@ function buildCoreIdentityFromDvla(dvla) {
 
   return {
     identity: {
-      make: dvla.make || null,
-      model: dvla.model || null, // often missing, that's OK
-      monthOfFirstRegistration: dvla.monthOfFirstRegistration || null,
-      engineCapacity: dvla.engineCapacity
-        ? Number(dvla.engineCapacity)
-        : null,
-      fuelType: dvla.fuelType || null,
-      bodyStyle: dvla.wheelplan || null,
+      make: dvla.make ?? null,
+      model: dvla.model ?? null, // usually undefined, OK
+      monthOfFirstRegistration: dvla.monthOfFirstRegistration ?? null,
+      engineCapacity:
+        dvla.engineCapacity !== undefined
+          ? Number(dvla.engineCapacity)
+          : null,
+      fuelType: dvla.fuelType ?? null,
+      bodyStyle: dvla.wheelplan ?? null,
     },
   };
 }

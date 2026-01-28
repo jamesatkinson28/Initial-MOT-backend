@@ -40,15 +40,15 @@ function nextWeeklyRetryDate() {
 }
 
 export function buildFingerprint(spec) {
-  if (!spec) return null;
+  if (!spec?.identity) return null;
 
   return [
-    spec.identity?.make,                 // DVLA – stable
-    spec.identity?.model,                // DVLA short model (optional)
-    spec.identity?.monthOfFirstRegistration, // DVLA – stable
-    spec.engine?.engine_cc,              // DVLA – stable
-    spec.engine?.fuel_type,              // DVLA – stable
-    spec.identity?.body_style            // DVLA – stable
+    spec.identity.make,
+    spec.identity.model,
+    spec.identity.monthOfFirstRegistration,
+    spec.identity.engineCapacity,
+    spec.identity.fuelType,
+    spec.identity.bodyStyle,
   ]
     .filter(Boolean)
     .join("|")
