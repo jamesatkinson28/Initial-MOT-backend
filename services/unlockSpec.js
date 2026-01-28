@@ -6,23 +6,19 @@ const DVLA_CACHE_TTL_HOURS = 24;
  * Build a spec-shaped core identity object from DVLA lookup data
  * (NO provider data, NO DVSA free text)
  */
-function buildCoreIdentityFromDvla(dvlaVehicle) {
-  if (!dvlaVehicle) return null;
+function buildCoreIdentityFromDvla(dvla) {
+  if (!dvla) return null;
 
   return {
     identity: {
-      make: dvlaVehicle.make || null,
-      model: dvlaVehicle.model || null, // DVLA short model if present
-      year_of_manufacture: dvlaVehicle.manufactureDate
-        ? new Date(dvlaVehicle.manufactureDate).getFullYear()
+      make: dvla.make || null,
+      model: dvla.model || null, // often missing, that's OK
+      monthOfFirstRegistration: dvla.monthOfFirstRegistration || null,
+      engineCapacity: dvla.engineCapacity
+        ? Number(dvla.engineCapacity)
         : null,
-      body_style: dvlaVehicle.bodyType || null,
-    },
-    engine: {
-      engine_cc: dvlaVehicle.engineCapacity
-        ? Number(dvlaVehicle.engineCapacity)
-        : null,
-      fuel_type: dvlaVehicle.fuelType || null,
+      fuelType: dvla.fuelType || null,
+      bodyStyle: dvla.wheelplan || null,
     },
   };
 }
