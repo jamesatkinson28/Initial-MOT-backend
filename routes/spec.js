@@ -515,6 +515,38 @@ router.get("/spec/unlocked", authRequired, async (req, res) => {
     });
   }
 });
+router.get("/spec/status", authRequired, async (req, res) => {
+  const vrm = req.query.vrm?.toUpperCase();
+  if (!vrm) return res.status(400).json({ error: "VRM required" });
+
+  const result = await query(
+    `
+    SELECT status_code, retry_after
+    FROM vrm_provider_status
+    WHERE vrm = $1
+    `,
+    [vrm]
+  );
+
+  if (result.rowCount === 0) {
+    return res.json({ blocked: false });
+  }
+
+  const row = result.rows[0];
+
+  if (
+    row.status_code?.toLowerCase().includes("retention") &&
+    new Date(row.retry_after) > new Date()
+  ) {
+    return res.json({
+      blocked: true,
+      reason: "RETENTION",
+      retryAfter: row.retry_after,
+    });
+  }
+
+  return res.json({ blocked: false });
+});
 
 
 
