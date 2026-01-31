@@ -2,10 +2,15 @@ import express from "express";
 import fetch from "node-fetch";
 import { withTransaction } from "../db/db.js";
 import { unlockSpec } from "../services/unlockSpec.js";
+import { optionalAuth } from "../middleware/auth.js";
+
 
 const router = express.Router();
 
-router.post("/spec-unlock", async (req, res) => {
+router.post(
+  "/spec-unlock",
+  optionalAuth,
+  async (req, res) => {
   try {
     const { vrm, guestId, transactionId, productId, platform } = req.body;
 	console.log("📦 /spec-unlock payload", {
