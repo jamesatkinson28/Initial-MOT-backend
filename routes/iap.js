@@ -8,7 +8,14 @@ const router = express.Router();
 router.post("/spec-unlock", async (req, res) => {
   try {
     const { vrm, guestId, transactionId, productId, platform } = req.body;
-
+	console.log("📦 /spec-unlock payload", {
+      vrm,
+      guestId,
+      transactionId,
+      productId,
+      platform,
+      hasUser: !!req.user,
+    });
     console.log("➡️ /spec-unlock hit", {
       vrm,
       hasUser: !!req.user,
