@@ -1,5 +1,5 @@
 import express from "express";
-import { authRequired } from "../middleware/auth.js";
+import { authRequired, optionalAuth } from "../middleware/auth.js";
 import { query, withTransaction } from "../db/db.js";
 import axios from "axios";
 import { unlockSpec } from "../services/unlockSpec.js";
@@ -388,77 +388,25 @@ async function fetchSpecDataFromAPI(vrm) {
 }
 
 
-
-// ------------------------------------------------------------
-// UNLOCK SPEC ROUTE (AUTHORITATIVE VERSION)
-// ------------------------------------------------------------
-
-router.post("/unlock-spec", authRequired, async (req, res) => {
-  try {
-    const { vrm } = req.body;
-    const user_id = req.user.id;
-
-    const payload = await withTransaction(async (db) => {
-      // 1) Perform unlock (creates snapshot + unlocked_specs + usage increment + cache)
-      const result = await unlockSpec({
-        db,
-        vrm,
-        user: req.user,
-      });
-
-      // 2) Immediately return the authoritative unlocked list (same as restore endpoint)
-      const list = await db.query(
-        `
-        SELECT us.vrm, vss.spec_json
-        FROM unlocked_specs us
-        JOIN vehicle_spec_snapshots vss ON vss.id = us.snapshot_id
-        WHERE us.user_id = $1
-        ORDER BY us.unlocked_at DESC
-        `,
-        [user_id]
-      );
-
-      return {
-        // Keep spec too (useful for the details screen)
-        spec: result.spec,
-        unlocked_specs: list.rows.map((row) => ({
-          reg: row.vrm,
-          spec: row.spec_json,
-        })),
-      };
-    });
-
-    return res.json({
-      success: true,
-      spec: payload.spec,
-      unlocked_specs: payload.unlocked_specs,
-    });
-  } catch (err) {
-    console.error("❌ SPEC UNLOCK ERROR:", err);
-    return res.status(500).json({
-      success: false,
-      error: err.message,
-    });
-  }
-});
-
-
-
-
-
 /**
  * POST /api/spec/unlock
  * body: { vehicle_id }
  * auth: required
  */
  
- router.get("/spec", authRequired, async (req, res) => {
+router.get("/spec", optionalAuth, async (req, res) => {
   try {
     const vrm = req.query.vrm?.toUpperCase();
-    const user_id = req.user.id;
 
     if (!vrm) {
       return res.status(400).json({ error: "VRM required" });
+    }
+
+    const userId = req.user?.id ?? null;
+    const guestId = req.guestId ?? null;
+
+    if (!userId && !guestId) {
+      return res.status(401).json({ error: "Not authorised" });
     }
 
     const result = await query(
@@ -466,10 +414,15 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
       SELECT vss.spec_json
       FROM unlocked_specs us
       JOIN vehicle_spec_snapshots vss ON vss.id = us.snapshot_id
-      WHERE us.user_id = $1 AND us.vrm = $2
+      WHERE us.vrm = $1
+        AND (
+          ($2::uuid IS NOT NULL AND us.user_id = $2)
+          OR
+          ($3::text IS NOT NULL AND us.guest_id = $3)
+        )
       LIMIT 1
       `,
-      [user_id, vrm]
+      [vrm, userId, guestId]
     );
 
     if (result.rowCount === 0) {
@@ -482,6 +435,7 @@ router.post("/unlock-spec", authRequired, async (req, res) => {
     return res.status(500).json({ error: "Failed to fetch spec" });
   }
 });
+
 
 
 // ------------------------------------------------------------
