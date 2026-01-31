@@ -48,3 +48,27 @@ export async function authRequired(req, res, next) {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 }
+
+export function optionalAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (authHeader?.startsWith("Bearer ")) {
+    try {
+      const token = authHeader.split(" ")[1];
+      const user = verifyToken(token);
+      req.user = user;
+    } catch {
+      // token invalid → treat as guest
+      req.user = null;
+    }
+  }
+
+  // Guest fingerprint (if you already use one)
+  req.guestId =
+    req.headers["x-guest-id"] ||
+    req.headers["x-device-id"] ||
+    null;
+
+  next();
+}
+
