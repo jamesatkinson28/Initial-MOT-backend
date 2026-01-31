@@ -1,52 +1,59 @@
 import express from "express";
-import { authRequired } from "../middleware/auth.js";
 import fetch from "node-fetch";
 import { withTransaction } from "../db/db.js";
 import { unlockSpec } from "../services/unlockSpec.js";
 
 const router = express.Router();
 
-router.post("/spec-unlock", authRequired, async (req, res) => {
+router.post("/spec-unlock", async (req, res) => {
   try {
-    const { vrm } = req.body;
+    const { vrm, guestId, transactionId, productId, platform } = req.body;
+
+    console.log("➡️ /spec-unlock hit", {
+      vrm,
+      hasUser: !!req.user,
+      guestId,
+      transactionId,
+    });
 
     const result = await withTransaction(async (db) => {
       return unlockSpec({
         db,
         vrm,
-        user: req.user
+        user: req.user ?? null,
+        guestId: guestId ?? null,
+        transactionId: transactionId ?? null,
+        productId: productId ?? null,
+        platform: platform ?? null,
       });
     });
 
     return res.json({ success: true, ...result });
   } catch (err) {
-  console.error("❌ IAP SPEC UNLOCK ERROR:", err);
+    console.error("❌ IAP SPEC UNLOCK ERROR:", err);
 
-  const message = err?.message || "";
+    const message = err?.message || "";
 
-  // 🚫 Plate retention / DVLA update window
-  if (
-    message.toLowerCase().includes("retention") ||
-    message.toLowerCase().includes("dvla") ||
-    message.toLowerCase().includes("temporarily unavailable")
-  ) {
-    return res.status(409).json({
+    if (
+      message.toLowerCase().includes("retention") ||
+      message.toLowerCase().includes("dvla") ||
+      message.toLowerCase().includes("temporarily unavailable")
+    ) {
+      return res.status(409).json({
+        success: false,
+        retention: true,
+        retryAfterDays: 7,
+        message:
+          "This registration is currently being updated by DVLA. Please try again in a few days.",
+      });
+    }
+
+    return res.status(500).json({
       success: false,
-      retention: true,
-      retryAfterDays: 7,
-      message:
-        "This registration is currently being updated by DVLA. Please try again in a few days.",
+      error: message || "Failed to unlock specification",
     });
   }
-
-  // ❌ Real error
-  return res.status(500).json({
-    success: false,
-    error: message || "Failed to unlock specification",
-  });
-}
-
-
 });
+
 
 export default router;
