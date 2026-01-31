@@ -33,42 +33,101 @@ function buildCoreIdentityFromDvla(dvla) {
 /**
  * MAIN UNLOCK FUNCTION
  */
-export async function unlockSpec({ db, vrm, user }) {
+export async function unlockSpec({
+  db,
+  vrm,
+  user = null,
+  guestId = null,
+  transactionId = null,
+  productId = null,
+  platform = null,
+}) {
   if (!vrm) throw new Error("VRM required");
+  if (!user && !guestId) {
+  throw new Error("No user or guest identity provided");
+}
 
   const vrmUpper = vrm.toUpperCase();
-  const user_id = user.id;
+  const user_id = user ? user.id : null;
+  
+  // --------------------------------------------------
+// TRANSACTION ID DEDUPE (AUTHORITATIVE)
+// --------------------------------------------------
+  if (transactionId) {
+  const txCheck = await db.query(
+    `
+    SELECT snapshot_id
+    FROM unlocked_specs
+    WHERE transaction_id = $1
+    `,
+    [transactionId]
+  );
+
+  if (txCheck.rowCount > 0) {
+    const snap = await db.query(
+      `
+      SELECT spec_json
+      FROM vehicle_spec_snapshots
+      WHERE id = $1
+      `,
+      [txCheck.rows[0].snapshot_id]
+    );
+
+    return {
+      alreadyUnlocked: true,
+      spec: snap.rows[0]?.spec_json || null,
+    };
+  }
+}
+
 
 
   // --------------------------------------------------
   // LOCK USER ROW (monthly unlock tracking)
   // --------------------------------------------------
-  const userRow = await db.query(
-    `
-    SELECT premium, premium_until, monthly_unlocks_used
-    FROM users
-    WHERE id=$1
-    FOR UPDATE
-    `,
-    [user_id]
-  );
+  let u = null;
+  let isPremium = false;
 
-  const u = userRow.rows[0];
-  const isPremium =
-    u.premium &&
-    (!u.premium_until || new Date(u.premium_until) > new Date());
+  if (user_id) {
+    const userRow = await db.query(
+      `
+      SELECT premium, premium_until, monthly_unlocks_used
+      FROM users
+      WHERE id=$1
+      FOR UPDATE
+      `,
+      [user_id]
+    );
+
+    u = userRow.rows[0];
+
+    isPremium =
+      u.premium &&
+      (!u.premium_until || new Date(u.premium_until) > new Date());
+  }
 
   // --------------------------------------------------
-  // ALREADY UNLOCKED?
+  // ALREADY UNLOCKED BY OWNER (VRM)
   // --------------------------------------------------
-  const existing = await db.query(
-    `
-    SELECT snapshot_id
-    FROM unlocked_specs
-    WHERE user_id=$1 AND vrm=$2
-    `,
-    [user_id, vrmUpper]
-  );
+  const existing = user_id
+  ? await db.query(
+      `
+      SELECT snapshot_id
+      FROM unlocked_specs
+      WHERE user_id=$1 AND vrm=$2
+      `,
+      [user_id, vrmUpper]
+    )
+  : await db.query(
+      `
+      SELECT snapshot_id
+      FROM unlocked_specs
+      WHERE guest_id=$1 AND vrm=$2
+      `,
+      [guestId, vrmUpper]
+    );
+
+
 
   if (existing.rowCount > 0) {
     const snap = await db.query(
@@ -251,18 +310,28 @@ if (
   // LINK USER → SNAPSHOT
   // --------------------------------------------------
   await db.query(
-    `
-    INSERT INTO unlocked_specs (user_id, vrm, snapshot_id)
-    VALUES ($1, $2, $3)
-	ON CONFLICT (user_id, vrm) DO NOTHING
-    `,
-    [user_id, vrmUpper, snapshotId]
-  );
+  `
+  INSERT INTO unlocked_specs
+    (user_id, guest_id, vrm, snapshot_id, transaction_id, product_id, platform)
+  VALUES
+    ($1, $2, $3, $4, $5, $6, $7)
+  ON CONFLICT DO NOTHING
+  `,
+  [
+    user_id,
+    user ? null : guestId,
+    vrmUpper,
+    snapshotId,
+    transactionId,
+    productId,
+    platform,
+  ]
+);
 
   // --------------------------------------------------
   // INCREMENT MONTHLY FREE UNLOCKS (PREMIUM ONLY)
   // --------------------------------------------------
-  if (isPremium && u.monthly_unlocks_used < 3) {
+  if (user_id && isPremium && u.monthly_unlocks_used < 3) {
     await db.query(
       `
       UPDATE users
