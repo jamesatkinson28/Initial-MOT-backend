@@ -41,12 +41,19 @@ export async function unlockSpec({
   transactionId = null,
   productId = null,
   platform = null,
-}) {
+}) {  console.log("🔥 unlockSpec ENTERED", {
+    vrm,
+    hasUser: !!user,
+    hasGuest: !!guestId,
+    transactionId,
+    productId,
+    platform,
+  });
   if (!vrm) throw new Error("VRM required");
   if (!user && !guestId) {
   throw new Error("No user or guest identity provided");
 }
-
+  
   const vrmUpper = vrm.toUpperCase();
   const user_id = user ? user.id : null;
   
