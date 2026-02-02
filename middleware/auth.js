@@ -17,7 +17,7 @@ export async function authRequired(req, res, next) {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
     // Fetch token_version from DB
-    const userRes = await query("SELECT token_version FROM users WHERE id=$1", [
+    const userRes = await query("SELECT token_version FROM users WHERE uuid = $1", [
       payload.id,
     ]);
 
@@ -36,6 +36,7 @@ export async function authRequired(req, res, next) {
     // Attach user
     req.user = {
       id: payload.id,
+	  legacyId: payload.legacyId,
       email: payload.email,
       premium: payload.premium,
       premium_until: payload.premium_until,
@@ -63,6 +64,7 @@ export function optionalAuth(req, res, next) {
 
       req.user = {
         id: payload.id,
+		legacyId: payload.legacyId,
         email: payload.email,
         premium: payload.premium,
         premium_until: payload.premium_until,
