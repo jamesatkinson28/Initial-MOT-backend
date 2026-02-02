@@ -19,7 +19,8 @@ const cleanEmail = (email) => email.trim().toLowerCase();
 function signAccessToken(user) {
   return jwt.sign(
     {
-      id: user.id,
+	  id: user.uuid,  
+      legacyId: user.id,
       email: user.email,
       premium: user.premium,
       premium_until: user.premium_until,
@@ -59,7 +60,7 @@ router.post("/register", async (req, res) => {
     const result = await query(
       `INSERT INTO users (email, password_hash)
        VALUES ($1, $2)
-       RETURNING id, email, premium, premium_until, token_version`,
+       RETURNING id, uuid, email, premium, premium_until, token_version`,
       [emailNorm, passwordHash]
     );
 
@@ -136,7 +137,7 @@ router.post("/login", async (req, res) => {
     const emailNorm = cleanEmail(email);
 
     const result = await query(
-      `SELECT id, email, password_hash, premium, premium_until, token_version, email_verified
+      `SELECT id, uuid, email, password_hash, premium, premium_until, token_version, email_verified
        FROM users
        WHERE email=$1`,
       [emailNorm]
@@ -178,7 +179,8 @@ router.post("/login", async (req, res) => {
       accessToken,
       refreshToken,
       user: {
-        id: user.id,
+        id: user.uuid,          // ✅ public identity is UUID
+		legacyId: user.id,
         email: user.email,
         premium: user.premium,
         premium_until: user.premium_until,

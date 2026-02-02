@@ -55,7 +55,7 @@ export async function unlockSpec({
 }
   
   const vrmUpper = vrm.toUpperCase();
-  const user_id = user ? user.id : null;
+  const userUuid = user ? user.id : null;
   
   // --------------------------------------------------
 // TRANSACTION ID DEDUPE (AUTHORITATIVE)
@@ -95,15 +95,15 @@ export async function unlockSpec({
   let u = null;
   let isPremium = false;
 
-  if (user_id) {
+  if (userUuid) {
     const userRow = await db.query(
       `
       SELECT premium, premium_until, monthly_unlocks_used
       FROM users
-      WHERE id=$1
+      WHERE uuid = $1
       FOR UPDATE
       `,
-      [user_id]
+      [userUuid]
     );
 
     u = userRow.rows[0];
@@ -116,14 +116,14 @@ export async function unlockSpec({
   // --------------------------------------------------
   // ALREADY UNLOCKED BY OWNER (VRM)
   // --------------------------------------------------
-  const existing = user_id
+  const existing = userUuid
   ? await db.query(
       `
       SELECT snapshot_id
       FROM unlocked_specs
       WHERE user_id=$1 AND vrm=$2
       `,
-      [user_id, vrmUpper]
+      [userUuid, vrmUpper]
     )
   : await db.query(
       `
@@ -325,7 +325,7 @@ if (
   ON CONFLICT DO NOTHING
   `,
   [
-    user_id,
+    userUuid,
     user ? null : guestId,
     vrmUpper,
     snapshotId,
@@ -338,14 +338,14 @@ if (
   // --------------------------------------------------
   // INCREMENT MONTHLY FREE UNLOCKS (PREMIUM ONLY)
   // --------------------------------------------------
-  if (user_id && isPremium && u.monthly_unlocks_used < 3) {
+  if (userUuid && isPremium && u.monthly_unlocks_used < 3) {
     await db.query(
       `
       UPDATE users
       SET monthly_unlocks_used = monthly_unlocks_used + 1
-      WHERE id=$1
+      WHERE uuid = $1
       `,
-      [user_id]
+      [userUuid]
     );
   }
 

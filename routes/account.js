@@ -33,7 +33,7 @@ async function maybeResetMonthlyUnlocks(userId, premiumSince, lastReset) {
       UPDATE users
       SET monthly_unlocks_used = 0,
           monthly_unlocks_reset_at = NOW()
-      WHERE id = $1
+      WHERE uuid = $1
       `,
       [userId]
     );
@@ -59,7 +59,7 @@ router.get("/account/overview", authRequired, async (req, res) => {
         monthly_unlocks_used,
         monthly_unlocks_reset_at
       FROM users
-      WHERE id = $1
+      WHERE uuid = $1
       `,
       [userId]
     );
@@ -80,7 +80,7 @@ router.get("/account/overview", authRequired, async (req, res) => {
 
       // Re-fetch unlock count after possible reset
       const refreshed = await query(
-        `SELECT monthly_unlocks_used FROM users WHERE id = $1`,
+        `SELECT monthly_unlocks_used FROM users WHERE uuid = $1`,
         [userId]
       );
 
