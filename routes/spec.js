@@ -403,7 +403,10 @@ router.get("/spec", optionalAuth, async (req, res) => {
     }
 
     const userId = req.user?.id ?? null;
-    const guestId = req.guestId ?? null;
+    const guestId =
+	  req.guestId ??
+	  req.query.guestId ??
+	  null;
 
     if (!userId && !guestId) {
       return res.status(401).json({ error: "Not authorised" });

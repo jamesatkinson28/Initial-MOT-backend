@@ -50,23 +50,38 @@ export async function authRequired(req, res, next) {
 }
 
 export function optionalAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
+  // ----------------------------
+  // 1) Try auth (non-fatal)
+  // ----------------------------
+  req.user = null;
 
-  if (authHeader?.startsWith("Bearer ")) {
+  const authHeader = req.headers.authorization || "";
+  if (authHeader.startsWith("Bearer ")) {
     try {
       const token = authHeader.split(" ")[1];
-      const user = verifyToken(token);
-      req.user = user;
+      const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+      req.user = {
+        id: payload.id,
+        email: payload.email,
+        premium: payload.premium,
+        premium_until: payload.premium_until,
+        tokenVersion: payload.tokenVersion,
+      };
     } catch {
-      // token invalid → treat as guest
+      // invalid token → treat as guest (do not 401 here)
       req.user = null;
     }
   }
 
-  // Guest fingerprint (if you already use one)
+  // ----------------------------
+  // 2) Guest id: accept header OR query OR body
+  // ----------------------------
   req.guestId =
     req.headers["x-guest-id"] ||
     req.headers["x-device-id"] ||
+    req.query?.guestId ||
+    req.body?.guestId ||
     null;
 
   next();
