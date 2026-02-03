@@ -19,7 +19,8 @@ function generateRefreshToken() {
 function signAccessToken(user) {
   return jwt.sign(
     {
-      id: user.id,
+      id: user.uuid,        // ✅ UUID ONLY
+	  legacyId: user.id,  
       email: user.email,
       premium: user.premium,
       premium_until: user.premium_until,
@@ -55,10 +56,10 @@ router.post("/refresh", async (req, res) => {
 
     // Load user for new access token
     const userRes = await query(
-      `SELECT id, email, premium, premium_until, token_version
-       FROM users WHERE id=$1`,
-      [userId]
-    );
+	  `SELECT id, uuid, email, premium, premium_until, token_version
+	   FROM users WHERE id = $1`,
+	  [userId]
+	);
 
     const user = userRes.rows[0];
 
