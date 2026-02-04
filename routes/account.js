@@ -1,6 +1,6 @@
 // routes/account.js
 import express from "express";
-import { authRequired } from "../middleware/auth.js";
+import { authRequired, optionalAuth } from "../middleware/auth.js";
 import { query } from "../db/db.js";
 
 const router = express.Router();
@@ -120,5 +120,69 @@ router.get("/account/overview", authRequired, async (req, res) => {
     res.status(500).json({ error: "Failed to load account overview" });
   }
 });
+
+/**
+ * GET /api/account/overview-guest
+ * Guest identity required via x-guest-id header or ?guestId=
+ * Returns: premium, premium_until, monthly_unlocks_remaining, total_unlocked, unlocked_vrms
+ */
+router.get("/account/overview-guest", optionalAuth, async (req, res) => {
+  try {
+    const guestId =
+      req.guestId ??
+      req.query?.guestId ??
+      req.headers["x-guest-id"] ??
+      req.headers["x-device-id"] ??
+      null;
+
+    if (!guestId) {
+      return res.status(400).json({ error: "guestId required" });
+    }
+
+    // ✅ Premium entitlement (guest)
+    const premRes = await query(
+      `
+      SELECT premium_until, monthly_unlocks_used
+      FROM premium_entitlements
+      WHERE guest_id = $1
+        AND premium_until > NOW()
+      ORDER BY premium_until DESC
+      LIMIT 1
+      `,
+      [guestId]
+    );
+
+    const premium = premRes.rowCount > 0;
+    const premium_until = premium ? premRes.rows[0].premium_until : null;
+    const used = premium ? Number(premRes.rows[0].monthly_unlocks_used ?? 0) : 0;
+
+    const monthly_unlocks_remaining = premium ? Math.max(3 - used, 0) : 0;
+
+    // ✅ Total unlocked specs (guest)
+    const unlocksRes = await query(
+      `SELECT COUNT(*)::int AS count FROM unlocked_specs WHERE guest_id = $1`,
+      [guestId]
+    );
+
+    const vrmsRes = await query(
+      `SELECT vrm FROM unlocked_specs WHERE guest_id = $1`,
+      [guestId]
+    );
+
+    const unlockedVrms = vrmsRes.rows.map((r) => r.vrm);
+
+    return res.json({
+      premium,
+      premium_until,
+      monthly_unlocks_remaining,
+      total_unlocked: unlocksRes.rows[0]?.count || 0,
+      unlocked_vrms: unlockedVrms,
+    });
+  } catch (err) {
+    console.error("[Account] overview-guest error:", err);
+    return res.status(500).json({ error: "Failed to load guest account overview" });
+  }
+});
+
 
 export default router;
