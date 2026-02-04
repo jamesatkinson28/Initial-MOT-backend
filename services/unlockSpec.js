@@ -106,11 +106,20 @@ export async function unlockSpec({
       [userUuid]
     );
 
-    u = userRow.rows[0];
+    u = userRow.rows[0] ?? { monthly_unlocks_used: 0 };
 
-    isPremium =
-      u.premium &&
-      (!u.premium_until || new Date(u.premium_until) > new Date());
+    const premiumRes = await db.query(
+	  `
+	  SELECT 1
+	  FROM premium_entitlements
+	  WHERE user_uuid = $1
+		AND premium_until > NOW()
+	  LIMIT 1
+	  `,
+	  [userUuid]
+	);
+
+	isPremium = premiumRes.rowCount > 0;
   }
 
   // --------------------------------------------------
