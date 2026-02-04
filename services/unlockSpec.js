@@ -347,16 +347,32 @@ if (
   // --------------------------------------------------
   // INCREMENT MONTHLY FREE UNLOCKS (PREMIUM ONLY)
   // --------------------------------------------------
-  if (userUuid && isPremium && u.monthly_unlocks_used < 3) {
+  if (isPremium) {
+  if (userUuid) {
+    // Logged-in premium user
     await db.query(
       `
       UPDATE users
       SET monthly_unlocks_used = monthly_unlocks_used + 1
       WHERE uuid = $1
+        AND monthly_unlocks_used < 3
       `,
       [userUuid]
     );
+  } else if (guestId) {
+    // Guest premium
+    await db.query(
+      `
+      UPDATE premium_entitlements
+      SET monthly_unlocks_used = monthly_unlocks_used + 1
+      WHERE guest_id = $1
+        AND premium_until > NOW()
+        AND monthly_unlocks_used < 3
+      `,
+      [guestId]
+    );
   }
+}
 
   return {
     unlocked: true,
