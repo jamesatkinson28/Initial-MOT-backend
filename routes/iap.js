@@ -1,6 +1,7 @@
 import express from "express";
 import fetch from "node-fetch";
 import { withTransaction } from "../db/db.js";
+import { query } from "../db/db.js"; 
 import { unlockSpec } from "../services/unlockSpec.js";
 import { optionalAuth } from "../middleware/auth.js";
 
