@@ -43,29 +43,37 @@ router.post("/iap/apple/notifications", async (req, res) => {
     // --------------------------------------------------
     // Handle cancellations / expiry / failures
     // --------------------------------------------------
-    if (
-      notificationType === "EXPIRED" ||
-      notificationType === "DID_FAIL_TO_RENEW" ||
-      notificationType === "CANCEL" ||
-      notificationType === "REFUND"
-    ) {
-      await query(
-        `
-        UPDATE premium_entitlements
-        SET premium_until = NOW()
-        WHERE transaction_id = $1
-        `,
-        [String(originalTransactionId)]
-      );
+    // Immediate revocation only
+	if (
+	  notificationType === "EXPIRED" ||
+	  notificationType === "REFUND"
+	) {
+	  await query(
+		`
+		UPDATE premium_entitlements
+		SET premium_until = NOW()
+		WHERE transaction_id = $1
+		`,
+		[String(originalTransactionId)]
+	  );
 
-      console.log(
-        "APPLE IAP REVOKED:",
-        notificationType,
-        originalTransactionId
-      );
+	  console.log("APPLE IAP REVOKED:", notificationType, originalTransactionId);
+	  return res.json({ ok: true });
+	}
 
-      return res.json({ ok: true });
-    }
+	// Cancellation / billing issue → allow access until expiry
+	if (
+	  notificationType === "CANCEL" ||
+	  notificationType === "DID_FAIL_TO_RENEW"
+	) {
+	  console.log(
+		"APPLE IAP NON-RENEWING:",
+		notificationType,
+		originalTransactionId
+	  );
+	  return res.json({ ok: true });
+	}
+
 
     // --------------------------------------------------
     // Determine expiry date (renewal OR transaction)
