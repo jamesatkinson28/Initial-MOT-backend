@@ -76,74 +76,60 @@ async function maybeResetGuestMonthlyUnlocks(guestId, premiumUntil, lastReset) {
  */
 router.get("/account/overview", optionalAuth, async (req, res) => {
   try {
-    // --------------------------------------------------
-    // 1️⃣ LOGGED-IN USER PATH (your existing code)
-    // --------------------------------------------------
+    // ==================================================
+    // 1️⃣ LOGGED-IN USER
+    // ==================================================
     if (req.user) {
-      const userId = req.user.id;
+      const userUuid = req.user.id;
 
-      const userRes = await query(
+      const entRes = await query(
         `
-        SELECT
-          email,
-          premium,
-          premium_until,
-          premium_since,
-          monthly_unlocks_used,
-          monthly_unlocks_reset_at
-        FROM users
-        WHERE uuid = $1
+        SELECT premium_until, monthly_unlocks_used, monthly_unlocks_reset_at
+        FROM premium_entitlements
+        WHERE user_uuid = $1
+          AND status = 'active'
+          AND premium_until > NOW()
+        LIMIT 1
         `,
-        [userId]
+        [userUuid]
       );
 
-      if (userRes.rows.length === 0) {
-        return res.status(404).json({ error: "User not found" });
-      }
+      const isPremium = entRes.rowCount > 0;
+      const ent = entRes.rows[0] ?? null;
 
-      let user = userRes.rows[0];
-
-      if (user.premium) {
+      if (isPremium) {
         await maybeResetMonthlyUnlocks(
-          userId,
-          user.premium_since,
-          user.monthly_unlocks_reset_at
+          userUuid,
+          ent.premium_until,
+          ent.monthly_unlocks_reset_at
         );
-
-        const refreshed = await query(
-          `SELECT monthly_unlocks_used FROM users WHERE uuid = $1`,
-          [userId]
-        );
-
-        user.monthly_unlocks_used =
-          refreshed.rows[0]?.monthly_unlocks_used ?? 0;
       }
 
       const unlocksRes = await query(
         `SELECT COUNT(*)::int AS count FROM unlocked_specs WHERE user_id = $1`,
-        [userId]
+        [userUuid]
       );
 
       const vrmsRes = await query(
         `SELECT vrm FROM unlocked_specs WHERE user_id = $1`,
-        [userId]
+        [userUuid]
       );
 
       return res.json({
-        email: user.email,
-        premium: user.premium,
-        premium_until: user.premium_until,
-        monthly_unlocks_remaining: user.premium
-          ? Math.max(3 - user.monthly_unlocks_used, 0)
+        email: req.user.email,
+        premium: isPremium,
+        premium_until: ent?.premium_until ?? null,
+        monthly_unlocks_remaining: isPremium
+          ? Math.max(3 - ent.monthly_unlocks_used, 0)
           : 0,
         total_unlocked: unlocksRes.rows[0]?.count || 0,
         unlocked_vrms: vrmsRes.rows.map(r => r.vrm),
       });
     }
 
-    // --------------------------------------------------
-    // 2️⃣ GUEST PREMIUM PATH (NEW – GOES HERE)
-    // --------------------------------------------------
+    // ==================================================
+    // 2️⃣ GUEST
+    // ==================================================
     const guestId = req.guestId;
     if (!guestId) {
       return res.status(401).json({ error: "Not authorised" });
@@ -154,13 +140,14 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
       SELECT premium_until, monthly_unlocks_used, monthly_unlocks_reset_at
       FROM premium_entitlements
       WHERE guest_id = $1
+        AND status = 'active'
         AND premium_until > NOW()
       LIMIT 1
       `,
       [guestId]
     );
 
-    if (entRes.rows.length === 0) {
+    if (entRes.rowCount === 0) {
       return res.json({
         premium: false,
         monthly_unlocks_remaining: 0,
@@ -171,7 +158,6 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
 
     const ent = entRes.rows[0];
 
-    // Optional: guest monthly reset
     await maybeResetGuestMonthlyUnlocks(
       guestId,
       ent.premium_until,
@@ -204,68 +190,7 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
     res.status(500).json({ error: "Failed to load account overview" });
   }
 });
-/**
- * GET /api/account/overview-guest
- * Guest identity required via x-guest-id header or ?guestId=
- * Returns: premium, premium_until, monthly_unlocks_remaining, total_unlocked, unlocked_vrms
- */
-router.get("/account/overview-guest", optionalAuth, async (req, res) => {
-  try {
-    const guestId =
-      req.guestId ??
-      req.query?.guestId ??
-      req.headers["x-guest-id"] ??
-      req.headers["x-device-id"] ??
-      null;
 
-    if (!guestId) {
-      return res.status(400).json({ error: "guestId required" });
-    }
-
-    // ✅ Premium entitlement (guest)
-    const premRes = await query(
-      `
-      SELECT premium_until, monthly_unlocks_used
-      FROM premium_entitlements
-      WHERE guest_id = $1
-        AND premium_until > NOW()
-      ORDER BY premium_until DESC
-      LIMIT 1
-      `,
-      [guestId]
-    );
-
-    const premium = premRes.rowCount > 0;
-    const premium_until = premium ? premRes.rows[0].premium_until : null;
-    const used = premium ? Number(premRes.rows[0].monthly_unlocks_used ?? 0) : 0;
-
-    const monthly_unlocks_remaining = premium ? Math.max(3 - used, 0) : 0;
-
-    // ✅ Total unlocked specs (guest)
-    const unlocksRes = await query(
-      `SELECT COUNT(*)::int AS count FROM unlocked_specs WHERE guest_id = $1`,
-      [guestId]
-    );
-
-    const vrmsRes = await query(
-      `SELECT vrm FROM unlocked_specs WHERE guest_id = $1`,
-      [guestId]
-    );
-
-    const unlockedVrms = vrmsRes.rows.map((r) => r.vrm);
-
-    return res.json({
-      premium,
-      premium_until,
-      monthly_unlocks_remaining,
-      total_unlocked: unlocksRes.rows[0]?.count || 0,
-      unlocked_vrms: unlockedVrms,
-    });
-  } catch (err) {
-    console.error("[Account] overview-guest error:", err);
-    return res.status(500).json({ error: "Failed to load guest account overview" });
-  }
-});
 
 
 export default router;

@@ -4,6 +4,52 @@ import { query } from "../db/db.js";
 
 const router = express.Router();
 
+export async function handleAppleNotification(payload) {
+  const type = payload.notificationType;
+  const data = payload.data;
+  const transaction = data?.signedTransactionInfo;
+  const renewal = data?.signedRenewalInfo;
+
+  if (!transaction) return;
+
+  const transactionId = transaction.originalTransactionId;
+  const expiresDate = new Date(Number(transaction.expiresDate));
+  const productId = transaction.productId;
+
+  switch (type) {
+    case "SUBSCRIBED":
+    case "DID_RENEW":
+    case "INTERACTIVE_RENEWAL":
+      await query(
+        `
+        UPDATE premium_entitlements
+        SET premium_until = $1,
+            last_event = $2
+        WHERE transaction_id = $3
+        `,
+        [expiresDate, type, transactionId]
+      );
+      break;
+
+    case "EXPIRED":
+    case "DID_FAIL_TO_RENEW":
+    case "CANCEL":
+      await query(
+        `
+        UPDATE premium_entitlements
+        SET premium_until = NOW(),
+            last_event = $1
+        WHERE transaction_id = $2
+        `,
+        [type, transactionId]
+      );
+      break;
+
+    default:
+      // Ignore other events for now
+      break;
+  }
+}
 router.post("/iap/apple/notifications", async (req, res) => {
   try {
     const { signedPayload } = req.body || {};
