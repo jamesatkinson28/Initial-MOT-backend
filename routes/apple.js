@@ -1,6 +1,6 @@
 // routes/apple.js
 import express from "express";
-import { verifyAppleNotification } from "../utils/appleVerifier.js";
+import { verifyAppleNotification } from "../apple/appleVerifier.js";
 import { query } from "../db/db.js";
 
 const router = express.Router();
