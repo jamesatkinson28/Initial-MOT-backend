@@ -51,3 +51,17 @@ export function makeAppleSignedDataVerifier() {
     appAppleId
   );
 }
+
+export async function verifyAppleNotification(rawBody) {
+  const verifier = makeAppleSignedDataVerifier();
+
+  if (!rawBody?.signedPayload) {
+    throw new Error("Missing signedPayload from Apple notification");
+  }
+
+  const decodedPayload = await verifier.verifyAndDecodeNotification(
+    rawBody.signedPayload
+  );
+
+  return decodedPayload;
+}

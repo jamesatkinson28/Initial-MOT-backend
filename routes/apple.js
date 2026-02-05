@@ -8,6 +8,9 @@ const router = express.Router();
 router.post("/apple/notifications", async (req, res) => {
   try {
     const payload = await verifyAppleNotification(req.body);
+	
+	console.log("🍎 Apple notification:", payload.notificationType);
+
 
     const {
       notificationType,
