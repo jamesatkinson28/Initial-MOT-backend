@@ -32,9 +32,15 @@ import emailVerificationRoutes from "./routes/emailVerification.js";
 import dvlaRoutes from "./routes/dvla.js";
 import iapRoutes from "./routes/iap.js";
 import lookupRoutes from "./routes/lookup.js";
-import appleNotifications from "./routes/appleNotifications.js";
-import apple from "./routes/apple.js";
+import appleNotificationsRouter from "./routes/appleNotifications.js";
+import appleRouter from "./routes/apple.js";
 
+
+app.use(
+  "/api/apple/notifications",
+  express.raw({ type: "*/*" }),
+  appleNotificationsRouter
+);
 // ==================================
 // NORMAL MIDDLEWARE (AFTER WEBHOOK)
 // ==================================
@@ -58,11 +64,6 @@ app.use("/api/auth", emailVerificationRoutes);
 app.use("/api", dvlaRoutes);
 app.use("/api/iap", iapRoutes);
 app.use("/api/lookup", lookupRoutes);
-app.use(
-  "/api/apple/notifications",
-  express.json({ type: "*/*" }),
-  appleNotificationsRouter
-);
 app.use("/api", appleRouter);
 
 // ==================================
