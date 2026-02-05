@@ -32,6 +32,7 @@ import emailVerificationRoutes from "./routes/emailVerification.js";
 import dvlaRoutes from "./routes/dvla.js";
 import iapRoutes from "./routes/iap.js";
 import lookupRoutes from "./routes/lookup.js";
+import appleNotifications from "./routes/appleNotifications.js";
 
 
 // ==================================
@@ -57,7 +58,7 @@ app.use("/api/auth", emailVerificationRoutes);
 app.use("/api", dvlaRoutes);
 app.use("/api/iap", iapRoutes);
 app.use("/api/lookup", lookupRoutes);
-
+app.use("/api", appleNotifications);
 
 // ==================================
 // DATABASE TEST ENDPOINT
