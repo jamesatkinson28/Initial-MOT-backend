@@ -83,46 +83,80 @@ router.post("/subscription", optionalAuth, async (req, res) => {
       return res.status(400).json({ error: "Missing productId or transactionId" });
     }
 
-    // Decide duration
+    // 🔁 Determine subscription length
     const interval =
-      productId === "garagegpt_premium_yearly" ? "1 year" : "1 month";
+      productId === "garagegpt_premium_yearly"
+        ? "1 year"
+        : "1 month";
 
-    // Create a simple entitlement record (you can upgrade this later)
-    await query(
+    // 1️⃣ Create or extend entitlement
+    const entitlementRes = await query(
       `
-      INSERT INTO premium_entitlements
-        (transaction_id, product_id, platform, user_uuid, guest_id, premium_until)
-      VALUES
-        ($1, $2, $3, $4, $5, NOW() + INTERVAL '${interval}')
+      INSERT INTO premium_entitlements (
+        transaction_id,
+        product_id,
+        platform,
+        user_uuid,
+        guest_id,
+        premium_until,
+        monthly_unlocks_used
+      )
+      VALUES (
+        $1, $2, $3, $4, $5,
+        NOW() + INTERVAL '${interval}',
+        0
+      )
       ON CONFLICT (transaction_id)
       DO UPDATE SET
         product_id = EXCLUDED.product_id,
         platform = EXCLUDED.platform,
         user_uuid = COALESCE(EXCLUDED.user_uuid, premium_entitlements.user_uuid),
         guest_id = COALESCE(EXCLUDED.guest_id, premium_entitlements.guest_id),
-        premium_until = GREATEST(premium_entitlements.premium_until, EXCLUDED.premium_until)
+        premium_until = GREATEST(
+          premium_entitlements.premium_until,
+          EXCLUDED.premium_until
+        ),
+        monthly_unlocks_used = 0
+      RETURNING premium_until
       `,
-      [transactionId, productId, platform ?? "ios", userUuid, userUuid ? null : gId]
+      [
+        transactionId,
+        productId,
+        platform ?? "ios",
+        userUuid,
+        userUuid ? null : gId,
+      ]
     );
 
-    // Optional: if logged-in, also set users.premium temporarily (until you move fully to entitlements)
+    const premiumUntil = entitlementRes.rows[0].premium_until;
+
+    // 2️⃣ Sync users table (TEMPORARY compatibility layer)
     if (userUuid) {
       await query(
         `
         UPDATE users
         SET premium = TRUE,
-            premium_until = NOW() + INTERVAL '${interval}'
+            premium_until = $2,
+            monthly_unlocks_used = 0,
+            monthly_unlocks_reset_at = NOW()
         WHERE uuid = $1
         `,
-        [userUuid]
+        [userUuid, premiumUntil]
       );
     }
 
-    return res.json({ success: true });
+    return res.json({
+      success: true,
+      premium_until: premiumUntil,
+    });
   } catch (err) {
     console.error("SUBSCRIPTION ERROR:", err);
-    return res.status(500).json({ error: "Failed to activate subscription" });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to activate subscription",
+    });
   }
 });
+
 
 export default router;
