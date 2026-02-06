@@ -248,12 +248,13 @@ router.post("/", async (req, res) => {
     );
 
     console.log(
-      "APPLE IAP UPDATED:",
-      notificationType,
-      originalTransactionId,
-      transactionId,
-      new Date(expiresDateMs).toISOString()
-    );
+	  "APPLE IAP UPDATED:",
+	  notificationType,
+	  originalTransactionId,
+	  latestTransactionId ?? effectiveTransactionId,
+	  new Date(expiresDateMs).toISOString()
+	);
+
 
     return res.json({ ok: true });
   } catch (err) {
