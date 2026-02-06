@@ -5,11 +5,9 @@ import { query } from "../db/db.js";
 const router = express.Router();
 
 router.post("/", async (req, res) => {
-  console.log("🍎 APPLE WEBHOOK HIT", {
-    contentType: req.headers["content-type"],
-    isBuffer: Buffer.isBuffer(req.body),
-    bodyLength: req.body?.length,
-  });
+    console.log("🍎 APPLE NOTIFICATION HIT");
+  console.log("HEADERS:", req.headers);
+  console.log("BODY:", JSON.stringify(req.body, null, 2));
 
   try {
     // --------------------------------------------------

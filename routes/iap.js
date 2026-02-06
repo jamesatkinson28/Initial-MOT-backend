@@ -63,7 +63,7 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
    SUBSCRIPTION CLAIM / LINK
 ------------------------------------------------------------------- */
 router.post("/subscription", optionalAuth, async (req, res) => {
-  console.log("📥 /subscription payload", req.body);
+  console.log("📥 /subscription payload:", req.body);
 
   try {
     const userUuid = req.user?.id ?? null;
@@ -80,20 +80,31 @@ router.post("/subscription", optionalAuth, async (req, res) => {
       req.body.latest_transaction_id ??
       null;
 
+    console.log("🔎 Parsed identifiers:", {
+      originalTransactionId,
+      latestTransactionId,
+      userUuid,
+      guestId,
+    });
+
+    // 🚨 Guard 1: must have some transaction identifier
     if (!originalTransactionId && !latestTransactionId) {
+      console.warn("❌ No transaction identifiers provided");
       return res.status(400).json({
-        error: "Missing originalTransactionId or transactionId",
+        error: "Missing transaction identifiers",
       });
     }
 
+    // 🚨 Guard 2: must have identity to link to
     if (!userUuid && !guestId) {
+      console.warn("❌ No user or guest identity provided");
       return res.status(400).json({
         error: "No user or guest identity provided",
       });
     }
 
-    // Try to match by original first; if not, fall back to latest
     const lookupId = originalTransactionId ?? latestTransactionId;
+    console.log("🔗 Attempting entitlement match using:", lookupId);
 
     const result = await query(
       `
@@ -103,21 +114,26 @@ router.post("/subscription", optionalAuth, async (req, res) => {
         guest_id = COALESCE($3, guest_id)
       WHERE original_transaction_id = $1
          OR latest_transaction_id = $1
-      RETURNING original_transaction_id, premium_until
+      RETURNING id, original_transaction_id, premium_until
       `,
       [String(lookupId), userUuid, userUuid ? null : guestId]
     );
 
     if (result.rowCount === 0) {
+      console.warn("⏳ No entitlement found yet for:", lookupId);
       return res.status(404).json({
-        error: "Subscription not found yet. Please try again shortly.",
+        error: "Subscription not found yet. Apple may still be processing.",
       });
     }
 
-    const premiumUntil = result.rows[0].premium_until;
-    const matchedOriginal = result.rows[0].original_transaction_id;
+    const { premium_until, original_transaction_id } = result.rows[0];
 
-    // TEMP compatibility: sync users table
+    console.log("✅ Entitlement linked:", {
+      premium_until,
+      original_transaction_id,
+    });
+
+    // Optional compatibility sync
     if (userUuid) {
       await query(
         `
@@ -127,23 +143,26 @@ router.post("/subscription", optionalAuth, async (req, res) => {
           premium_until = $2
         WHERE uuid = $1
         `,
-        [userUuid, premiumUntil]
+        [userUuid, premium_until]
       );
+
+      console.log("👤 User premium synced:", userUuid);
     }
 
     return res.json({
       success: true,
-      premium_until: premiumUntil,
-      original_transaction_id: matchedOriginal,
+      premium_until,
+      original_transaction_id,
     });
   } catch (err) {
-    console.error("SUBSCRIPTION CLAIM ERROR:", err);
+    console.error("🔥 SUBSCRIPTION CLAIM ERROR:", err);
     return res.status(500).json({
       success: false,
       error: err?.message || "Failed to link subscription",
     });
   }
 });
+
 
 
 export default router;
