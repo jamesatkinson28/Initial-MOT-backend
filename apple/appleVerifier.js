@@ -41,7 +41,7 @@ export function makeAppleSignedDataVerifier() {
   const appleRootCAs = loadAppleRootCAs();
 
   // enableOnlineChecks=true lets the verifier do extra checks
-  const enableOnlineChecks = true;
+  const enableOnlineChecks = environment === Environment.PRODUCTION;
 
   return new SignedDataVerifier(
     appleRootCAs,
