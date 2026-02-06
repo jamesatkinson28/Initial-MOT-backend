@@ -66,14 +66,23 @@ router.post("/subscription", optionalAuth, async (req, res) => {
   console.log("📥 /subscription payload", req.body);
 
   try {
-    const { originalTransactionId } = req.body;
-
     const userUuid = req.user?.id ?? null;
     const guestId = req.body.guestId ?? null;
 
-    if (!originalTransactionId) {
+    const originalTransactionId =
+      req.body.originalTransactionId ??
+      req.body.original_transaction_id ??
+      null;
+
+    const latestTransactionId =
+      req.body.transactionId ??
+      req.body.latestTransactionId ??
+      req.body.latest_transaction_id ??
+      null;
+
+    if (!originalTransactionId && !latestTransactionId) {
       return res.status(400).json({
-        error: "Missing originalTransactionId",
+        error: "Missing originalTransactionId or transactionId",
       });
     }
 
@@ -83,7 +92,9 @@ router.post("/subscription", optionalAuth, async (req, res) => {
       });
     }
 
-    // Link entitlement to user / guest
+    // Try to match by original first; if not, fall back to latest
+    const lookupId = originalTransactionId ?? latestTransactionId;
+
     const result = await query(
       `
       UPDATE premium_entitlements
@@ -91,13 +102,10 @@ router.post("/subscription", optionalAuth, async (req, res) => {
         user_uuid = COALESCE($2, user_uuid),
         guest_id = COALESCE($3, guest_id)
       WHERE original_transaction_id = $1
-      RETURNING premium_until
+         OR latest_transaction_id = $1
+      RETURNING original_transaction_id, premium_until
       `,
-      [
-        originalTransactionId,
-        userUuid,
-        userUuid ? null : guestId,
-      ]
+      [String(lookupId), userUuid, userUuid ? null : guestId]
     );
 
     if (result.rowCount === 0) {
@@ -107,6 +115,7 @@ router.post("/subscription", optionalAuth, async (req, res) => {
     }
 
     const premiumUntil = result.rows[0].premium_until;
+    const matchedOriginal = result.rows[0].original_transaction_id;
 
     // TEMP compatibility: sync users table
     if (userUuid) {
@@ -114,27 +123,27 @@ router.post("/subscription", optionalAuth, async (req, res) => {
         `
         UPDATE users
         SET
-          premium = premium_until > NOW(),
+          premium = $2 > NOW(),
           premium_until = $2
-        FROM premium_entitlements
-        WHERE users.uuid = $1
-          AND premium_entitlements.original_transaction_id = $3
+        WHERE uuid = $1
         `,
-        [userUuid, premiumUntil, originalTransactionId]
+        [userUuid, premiumUntil]
       );
     }
 
     return res.json({
       success: true,
       premium_until: premiumUntil,
+      original_transaction_id: matchedOriginal,
     });
   } catch (err) {
     console.error("SUBSCRIPTION CLAIM ERROR:", err);
     return res.status(500).json({
       success: false,
-      error: "Failed to link subscription",
+      error: err?.message || "Failed to link subscription",
     });
   }
 });
+
 
 export default router;
