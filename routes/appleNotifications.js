@@ -6,8 +6,6 @@ const router = express.Router();
 
 router.post("/", async (req, res) => {
     console.log("🍎 APPLE NOTIFICATION HIT");
-  console.log("HEADERS:", req.headers);
-  console.log("BODY:", JSON.stringify(req.body, null, 2));
 
   try {
     // --------------------------------------------------
