@@ -224,14 +224,17 @@ router.post("/", async (req, res) => {
 	  )
 
       ON CONFLICT (original_transaction_id)
-      DO UPDATE SET
-        latest_transaction_id = EXCLUDED.latest_transaction_id,
-        premium_until = EXCLUDED.premium_until,
-        product_id = COALESCE(EXCLUDED.product_id, premium_entitlements.product_id),
-        platform = 'ios',
-        status = 'active',
-        last_notification_type = EXCLUDED.last_notification_type,
-        last_notification_at = NOW()
+	  DO UPDATE SET
+	    latest_transaction_id = EXCLUDED.latest_transaction_id,
+	    premium_until = GREATEST(
+	  	  premium_entitlements.premium_until,
+		  EXCLUDED.premium_until
+	    ),
+	    product_id = COALESCE(EXCLUDED.product_id, premium_entitlements.product_id),
+	    platform = 'ios',
+	    status = 'active',
+	    last_notification_type = EXCLUDED.last_notification_type,
+	    last_notification_at = NOW()
       `,
       [
 	    String(effectiveTransactionId),                 // transaction_id (NOT NULL)
