@@ -1,32 +1,24 @@
 import express from "express";
-import fetch from "node-fetch";
-import { withTransaction } from "../db/db.js";
-import { query } from "../db/db.js"; 
+import { withTransaction, query } from "../db/db.js";
 import { unlockSpec } from "../services/unlockSpec.js";
 import { optionalAuth } from "../middleware/auth.js";
 
-
 const router = express.Router();
 
-router.post(
-  "/spec-unlock",
-  optionalAuth,
-  async (req, res) => {
+/* ------------------------------------------------------------------
+   SPEC UNLOCK (unchanged)
+------------------------------------------------------------------- */
+router.post("/spec-unlock", optionalAuth, async (req, res) => {
   try {
     const { vrm, guestId, transactionId, productId, platform } = req.body;
-	console.log("📦 /spec-unlock payload", {
+
+    console.log("📦 /spec-unlock payload", {
       vrm,
       guestId,
       transactionId,
       productId,
       platform,
       hasUser: !!req.user,
-    });
-    console.log("➡️ /spec-unlock hit", {
-      vrm,
-      hasUser: !!req.user,
-      guestId,
-      transactionId,
     });
 
     const result = await withTransaction(async (db) => {
@@ -49,8 +41,7 @@ router.post(
 
     if (
       message.toLowerCase().includes("retention") ||
-      message.toLowerCase().includes("dvla") ||
-      message.toLowerCase().includes("temporarily unavailable")
+      message.toLowerCase().includes("dvla")
     ) {
       return res.status(409).json({
         success: false,
@@ -68,80 +59,66 @@ router.post(
   }
 });
 
+/* ------------------------------------------------------------------
+   SUBSCRIPTION CLAIM / LINK
+------------------------------------------------------------------- */
 router.post("/subscription", optionalAuth, async (req, res) => {
   try {
-    const { productId, transactionId, platform, guestId } = req.body;
+    const { originalTransactionId } = req.body;
 
     const userUuid = req.user?.id ?? null;
-    const gId = guestId ?? req.guestId ?? null;
+    const guestId = req.body.guestId ?? null;
 
-    if (!userUuid && !gId) {
-      return res.status(400).json({ error: "No user or guest identity provided" });
+    if (!originalTransactionId) {
+      return res.status(400).json({
+        error: "Missing originalTransactionId",
+      });
     }
 
-    if (!productId || !transactionId) {
-      return res.status(400).json({ error: "Missing productId or transactionId" });
+    if (!userUuid && !guestId) {
+      return res.status(400).json({
+        error: "No user or guest identity provided",
+      });
     }
 
-    // 🔁 Determine subscription length
-    const interval =
-      productId === "garagegpt_premium_yearly"
-        ? "1 year"
-        : "1 month";
-
-    // 1️⃣ Create or extend entitlement
-    const entitlementRes = await query(
+    // Link entitlement to user / guest
+    const result = await query(
       `
-      INSERT INTO premium_entitlements (
-        transaction_id,
-        product_id,
-        platform,
-        user_uuid,
-        guest_id,
-        premium_until,
-        monthly_unlocks_used
-      )
-      VALUES (
-        $1, $2, $3, $4, $5,
-        NOW() + INTERVAL '${interval}',
-        0
-      )
-      ON CONFLICT (transaction_id)
-      DO UPDATE SET
-        product_id = EXCLUDED.product_id,
-        platform = EXCLUDED.platform,
-        user_uuid = COALESCE(EXCLUDED.user_uuid, premium_entitlements.user_uuid),
-        guest_id = COALESCE(EXCLUDED.guest_id, premium_entitlements.guest_id),
-        premium_until = GREATEST(
-          premium_entitlements.premium_until,
-          EXCLUDED.premium_until
-        ),
-        monthly_unlocks_used = 0
+      UPDATE premium_entitlements
+      SET
+        user_uuid = COALESCE($2, user_uuid),
+        guest_id = COALESCE($3, guest_id)
+      WHERE original_transaction_id = $1
       RETURNING premium_until
       `,
       [
-        transactionId,
-        productId,
-        platform ?? "ios",
+        originalTransactionId,
         userUuid,
-        userUuid ? null : gId,
+        userUuid ? null : guestId,
       ]
     );
 
-    const premiumUntil = entitlementRes.rows[0].premium_until;
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        error: "Subscription not found yet. Please try again shortly.",
+      });
+    }
 
-    // 2️⃣ Sync users table (TEMPORARY compatibility layer)
+    const premiumUntil = result.rows[0].premium_until;
+
+    // TEMP compatibility: sync users table
     if (userUuid) {
       await query(
         `
         UPDATE users
-        SET premium = TRUE,
-            premium_until = $2,
-            monthly_unlocks_used = 0,
-            monthly_unlocks_reset_at = NOW()
-        WHERE uuid = $1
+        SET
+          premium = premium_until > NOW(),
+          premium_until = $2
+        FROM premium_entitlements
+        WHERE users.uuid = $1
+          AND premium_entitlements.original_transaction_id = $3
         `,
-        [userUuid, premiumUntil]
+        [userUuid, premiumUntil, originalTransactionId]
       );
     }
 
@@ -150,13 +127,12 @@ router.post("/subscription", optionalAuth, async (req, res) => {
       premium_until: premiumUntil,
     });
   } catch (err) {
-    console.error("SUBSCRIPTION ERROR:", err);
+    console.error("SUBSCRIPTION CLAIM ERROR:", err);
     return res.status(500).json({
       success: false,
-      error: "Failed to activate subscription",
+      error: "Failed to link subscription",
     });
   }
 });
-
 
 export default router;

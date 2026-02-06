@@ -31,7 +31,7 @@ router.post("/", async (req, res) => {
     }
 
     // --------------------------------------------------
-    // Verify & decode notification
+    // Verify & decode notification (V2)
     // --------------------------------------------------
     const verifier = makeAppleSignedDataVerifier();
     const decoded = await verifier.verifyAndDecodeNotification(signedPayload);
@@ -54,9 +54,10 @@ router.post("/", async (req, res) => {
     }
 
     // --------------------------------------------------
-    // Extract identifiers
+    // Extract Apple identifiers
     // --------------------------------------------------
     const originalTransactionId = tx?.originalTransactionId;
+    const transactionId = tx?.transactionId ?? null; // changes every renewal
     const productId = tx?.productId ?? null;
 
     if (!originalTransactionId) {
@@ -68,29 +69,52 @@ router.post("/", async (req, res) => {
     }
 
     // --------------------------------------------------
-    // Immediate revocation events
+    // IMMEDIATE REVOCATION (refund / revoke)
     // --------------------------------------------------
-    if (notificationType === "EXPIRED" || notificationType === "REFUND") {
-	  await query(
-		`
-		UPDATE premium_entitlements
-		SET
-		  premium_until = NOW(),
-		  status = 'expired',
-		  last_notification_type = $2,
-		  last_notification_at = NOW()
-		WHERE transaction_id = $1
-		`,
-		[String(originalTransactionId), notificationType]
-	  );
+    if (
+      notificationType === "REFUND" ||
+      notificationType === "REVOKE"
+    ) {
+      await query(
+        `
+        UPDATE premium_entitlements
+        SET
+          premium_until = NOW(),
+          status = 'revoked',
+          last_notification_type = $2,
+          last_notification_at = NOW()
+        WHERE original_transaction_id = $1
+        `,
+        [String(originalTransactionId), notificationType]
+      );
 
-	  console.log("APPLE IAP REVOKED:", notificationType, originalTransactionId);
-	  return res.json({ ok: true });
-	}
-
+      console.log("APPLE IAP REVOKED:", notificationType, originalTransactionId);
+      return res.json({ ok: true });
+    }
 
     // --------------------------------------------------
-    // Non-renewing (grace period allowed)
+    // FULL EXPIRY
+    // --------------------------------------------------
+    if (notificationType === "EXPIRED") {
+      await query(
+        `
+        UPDATE premium_entitlements
+        SET
+          premium_until = NOW(),
+          status = 'expired',
+          last_notification_type = $2,
+          last_notification_at = NOW()
+        WHERE original_transaction_id = $1
+        `,
+        [String(originalTransactionId), notificationType]
+      );
+
+      console.log("APPLE IAP EXPIRED:", originalTransactionId);
+      return res.json({ ok: true });
+    }
+
+    // --------------------------------------------------
+    // CANCELLED / BILLING FAILURE (no access change)
     // --------------------------------------------------
     if (
       notificationType === "CANCELLED" ||
@@ -100,9 +124,10 @@ router.post("/", async (req, res) => {
         `
         UPDATE premium_entitlements
         SET
+          status = 'cancelled',
           last_notification_type = $2,
           last_notification_at = NOW()
-        WHERE transaction_id = $1
+        WHERE original_transaction_id = $1
         `,
         [String(originalTransactionId), notificationType]
       );
@@ -116,16 +141,33 @@ router.post("/", async (req, res) => {
     }
 
     // --------------------------------------------------
-    // Determine expiry date
+    // METADATA-ONLY EVENTS
     // --------------------------------------------------
-    let expiresDateMs =
-      tx?.expiresDate ??
-      null;
+    if (
+      notificationType === "DID_CHANGE_RENEWAL_STATUS" ||
+      notificationType === "PRICE_INCREASE"
+    ) {
+      await query(
+        `
+        UPDATE premium_entitlements
+        SET
+          last_notification_type = $2,
+          last_notification_at = NOW()
+        WHERE original_transaction_id = $1
+        `,
+        [String(originalTransactionId), notificationType]
+      );
+
+      return res.json({ ok: true });
+    }
+
+    // --------------------------------------------------
+    // DETERMINE EXPIRY (INITIAL_BUY / DID_RENEW / PLAN CHANGE)
+    // --------------------------------------------------
+    let expiresDateMs = tx?.expiresDate ?? null;
 
     if (!expiresDateMs && signedRenewalInfo) {
-      const renewal =
-        await verifier.verifyAndDecodeRenewal(signedRenewalInfo);
-
+      const renewal = await verifier.verifyAndDecodeRenewal(signedRenewalInfo);
       expiresDateMs =
         renewal?.expiresDate ??
         renewal?.renewalDate ??
@@ -142,36 +184,43 @@ router.post("/", async (req, res) => {
     }
 
     // --------------------------------------------------
-    // UPSERT entitlement
+    // UPSERT ENTITLEMENT (buy / renew / plan change)
     // --------------------------------------------------
     await query(
       `
       INSERT INTO premium_entitlements (
-        transaction_id,
+        original_transaction_id,
+        latest_transaction_id,
         premium_until,
         product_id,
         platform,
+        status,
         last_notification_type,
         last_notification_at
       )
       VALUES (
         $1,
-        to_timestamp($2 / 1000.0),
-        $3,
-        'ios',
+        $2,
+        to_timestamp($3 / 1000.0),
         $4,
+        'ios',
+        'active',
+        $5,
         NOW()
       )
-      ON CONFLICT (transaction_id)
+      ON CONFLICT (original_transaction_id)
       DO UPDATE SET
+        latest_transaction_id = EXCLUDED.latest_transaction_id,
         premium_until = EXCLUDED.premium_until,
         product_id = COALESCE(EXCLUDED.product_id, premium_entitlements.product_id),
         platform = 'ios',
+        status = 'active',
         last_notification_type = EXCLUDED.last_notification_type,
         last_notification_at = NOW()
       `,
       [
         String(originalTransactionId),
+        transactionId,
         Number(expiresDateMs),
         productId,
         notificationType,
@@ -182,6 +231,7 @@ router.post("/", async (req, res) => {
       "APPLE IAP UPDATED:",
       notificationType,
       originalTransactionId,
+      transactionId,
       new Date(expiresDateMs).toISOString()
     );
 
