@@ -56,17 +56,29 @@ router.post("/", async (req, res) => {
     // --------------------------------------------------
     // Extract Apple identifiers
     // --------------------------------------------------
-    const originalTransactionId = tx?.originalTransactionId;
-    const transactionId = tx?.transactionId ?? null; // changes every renewal
-    const productId = tx?.productId ?? null;
+    const originalTransactionId =
+	  tx?.originalTransactionId ??
+	  null;
 
-    if (!originalTransactionId) {
-      console.warn(
-        "APPLE IAP: Missing originalTransactionId",
-        notificationType
-      );
-      return res.json({ ok: true });
-    }
+	const latestTransactionId =
+	  tx?.transactionId ??
+	  tx?.latestTransactionId ??
+	  null;
+
+	// 🔑 CRITICAL FALLBACK (prevents NOT NULL errors)
+	const effectiveTransactionId =
+	  latestTransactionId ?? originalTransactionId;
+
+	const productId = tx?.productId ?? null;
+
+	if (!effectiveTransactionId) {
+	  console.warn(
+		"APPLE IAP: Missing transaction identifiers",
+		notificationType
+	  );
+	  return res.json({ ok: true });
+	}
+
 
     // --------------------------------------------------
     // IMMEDIATE REVOCATION (refund / revoke)
@@ -189,25 +201,28 @@ router.post("/", async (req, res) => {
     await query(
       `
       INSERT INTO premium_entitlements (
-        original_transaction_id,
-        latest_transaction_id,
-        premium_until,
-        product_id,
-        platform,
-        status,
-        last_notification_type,
-        last_notification_at
-      )
+	    transaction_id,
+	    latest_transaction_id,
+	    original_transaction_id,
+	    premium_until,
+	    product_id,
+	    platform,
+	    status,
+	    last_notification_type,
+	    last_notification_at
+	  )
       VALUES (
-        $1,
-        $2,
-        to_timestamp($3 / 1000.0),
-        $4,
-        'ios',
-        'active',
-        $5,
-        NOW()
-      )
+	    $1,
+	    $2,
+	    $3,
+	    to_timestamp($4 / 1000.0),
+	    $5,
+	    'ios',
+	    'active',
+	    $6,
+	   NOW()
+	  )
+
       ON CONFLICT (original_transaction_id)
       DO UPDATE SET
         latest_transaction_id = EXCLUDED.latest_transaction_id,
@@ -219,12 +234,14 @@ router.post("/", async (req, res) => {
         last_notification_at = NOW()
       `,
       [
-        String(originalTransactionId),
-        transactionId,
-        Number(expiresDateMs),
-        productId,
-        notificationType,
-      ]
+	    String(effectiveTransactionId),                 // transaction_id (NOT NULL)
+	    String(latestTransactionId ?? effectiveTransactionId),
+	    String(originalTransactionId ?? effectiveTransactionId),
+	    Number(expiresDateMs),
+	    productId,
+	    notificationType,
+	  ]
+
     );
 
     console.log(
