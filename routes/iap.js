@@ -87,31 +87,33 @@ router.post("/subscription", optionalAuth, async (req, res) => {
     const entitlementRes = await query(
       `
       INSERT INTO premium_entitlements (
-        transaction_id,
-        product_id,
-        platform,
-        user_uuid,
-        guest_id,
-        premium_until,
-        monthly_unlocks_used
-      )
-      VALUES (
-        $1, $2, $3, $4, $5,
-        NOW() + INTERVAL '${interval}',
-        0
-      )
-      ON CONFLICT (transaction_id)
-      DO UPDATE SET
-        product_id = EXCLUDED.product_id,
-        platform = EXCLUDED.platform,
-        user_uuid = COALESCE(EXCLUDED.user_uuid, premium_entitlements.user_uuid),
-        guest_id = COALESCE(EXCLUDED.guest_id, premium_entitlements.guest_id),
-        premium_until = GREATEST(
-          premium_entitlements.premium_until,
-          EXCLUDED.premium_until
-        ),
-        monthly_unlocks_used = 0
-      RETURNING premium_until
+	  transaction_id,
+	  latest_transaction_id,
+	  product_id,
+	  platform,
+	  user_uuid,
+	  guest_id,
+	  premium_until,
+	  monthly_unlocks_used
+	)
+	VALUES (
+	  $1, $1, $2, $3, $4, $5,
+	  NOW() + INTERVAL '${interval}',
+	  0
+	)
+	ON CONFLICT (transaction_id)
+	DO UPDATE SET
+	  latest_transaction_id = EXCLUDED.latest_transaction_id,
+	  product_id = EXCLUDED.product_id,
+	  platform = EXCLUDED.platform,
+	  user_uuid = COALESCE(EXCLUDED.user_uuid, premium_entitlements.user_uuid),
+	  guest_id = COALESCE(EXCLUDED.guest_id, premium_entitlements.guest_id),
+	  premium_until = GREATEST(
+		premium_entitlements.premium_until,
+		EXCLUDED.premium_until
+	  ),
+	  monthly_unlocks_used = 0
+	RETURNING premium_until;
       `,
       [
         transactionId,
