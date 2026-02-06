@@ -223,7 +223,7 @@ router.post("/", async (req, res) => {
 	   NOW()
 	  )
 
-      ON CONFLICT (original_transaction_id)
+      ON CONFLICT ON CONSTRAINT premium_entitlements_original_tx_unique
       DO UPDATE SET
         latest_transaction_id = EXCLUDED.latest_transaction_id,
         premium_until = EXCLUDED.premium_until,
