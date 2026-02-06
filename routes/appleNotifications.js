@@ -5,7 +5,11 @@ import { query } from "../db/db.js";
 const router = express.Router();
 
 router.post("/", async (req, res) => {
-    console.log("🍎 APPLE NOTIFICATION HIT");
+  console.log("🍎 APPLE WEBHOOK HIT", {
+    contentType: req.headers["content-type"],
+    isBuffer: Buffer.isBuffer(req.body),
+    bodyLength: req.body?.length, 
+  });
 
   try {
     // --------------------------------------------------
