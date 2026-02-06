@@ -63,105 +63,95 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
    SUBSCRIPTION CLAIM / LINK
 ------------------------------------------------------------------- */
 router.post("/subscription", optionalAuth, async (req, res) => {
-  console.log("📥 /subscription payload:", req.body);
-
   try {
+    const { productId, transactionId, platform, guestId } = req.body;
+
     const userUuid = req.user?.id ?? null;
-    const guestId = req.body.guestId ?? null;
+    const gId = guestId ?? req.guestId ?? null;
 
-    const originalTransactionId =
-      req.body.originalTransactionId ??
-      req.body.original_transaction_id ??
-      null;
-
-    const latestTransactionId =
-      req.body.transactionId ??
-      req.body.latestTransactionId ??
-      req.body.latest_transaction_id ??
-      null;
-
-    console.log("🔎 Parsed identifiers:", {
-      originalTransactionId,
-      latestTransactionId,
-      userUuid,
-      guestId,
-    });
-
-    // 🚨 Guard 1: must have some transaction identifier
-    if (!originalTransactionId && !latestTransactionId) {
-      console.warn("❌ No transaction identifiers provided");
-      return res.status(400).json({
-        error: "Missing transaction identifiers",
-      });
+    if (!userUuid && !gId) {
+      return res.status(400).json({ error: "No user or guest identity provided" });
     }
 
-    // 🚨 Guard 2: must have identity to link to
-    if (!userUuid && !guestId) {
-      console.warn("❌ No user or guest identity provided");
-      return res.status(400).json({
-        error: "No user or guest identity provided",
-      });
+    if (!productId || !transactionId) {
+      return res.status(400).json({ error: "Missing productId or transactionId" });
     }
 
-    const lookupId = originalTransactionId ?? latestTransactionId;
-    console.log("🔗 Attempting entitlement match using:", lookupId);
+    // 🔁 Determine subscription length
+    const interval =
+      productId === "garagegpt_premium_yearly"
+        ? "1 year"
+        : "1 month";
 
-    const result = await query(
+    // 1️⃣ Create or extend entitlement
+    const entitlementRes = await query(
       `
-      UPDATE premium_entitlements
-      SET
-        user_uuid = COALESCE($2, user_uuid),
-        guest_id = COALESCE($3, guest_id)
-      WHERE original_transaction_id = $1
-         OR latest_transaction_id = $1
-      RETURNING id, original_transaction_id, premium_until
+      INSERT INTO premium_entitlements (
+        transaction_id,
+        product_id,
+        platform,
+        user_uuid,
+        guest_id,
+        premium_until,
+        monthly_unlocks_used
+      )
+      VALUES (
+        $1, $2, $3, $4, $5,
+        NOW() + INTERVAL '${interval}',
+        0
+      )
+      ON CONFLICT (transaction_id)
+      DO UPDATE SET
+        product_id = EXCLUDED.product_id,
+        platform = EXCLUDED.platform,
+        user_uuid = COALESCE(EXCLUDED.user_uuid, premium_entitlements.user_uuid),
+        guest_id = COALESCE(EXCLUDED.guest_id, premium_entitlements.guest_id),
+        premium_until = GREATEST(
+          premium_entitlements.premium_until,
+          EXCLUDED.premium_until
+        ),
+        monthly_unlocks_used = 0
+      RETURNING premium_until
       `,
-      [String(lookupId), userUuid, userUuid ? null : guestId]
+      [
+        transactionId,
+        productId,
+        platform ?? "ios",
+        userUuid,
+        userUuid ? null : gId,
+      ]
     );
 
-    if (result.rowCount === 0) {
-      console.warn("⏳ No entitlement found yet for:", lookupId);
-      return res.status(404).json({
-        error: "Subscription not found yet. Apple may still be processing.",
-      });
-    }
+    const premiumUntil = entitlementRes.rows[0].premium_until;
 
-    const { premium_until, original_transaction_id } = result.rows[0];
-
-    console.log("✅ Entitlement linked:", {
-      premium_until,
-      original_transaction_id,
-    });
-
-    // Optional compatibility sync
+    // 2️⃣ Sync users table (TEMPORARY compatibility layer)
     if (userUuid) {
       await query(
         `
         UPDATE users
-        SET
-          premium = $2 > NOW(),
-          premium_until = $2
+        SET premium = TRUE,
+            premium_until = $2,
+            monthly_unlocks_used = 0,
+            monthly_unlocks_reset_at = NOW()
         WHERE uuid = $1
         `,
-        [userUuid, premium_until]
+        [userUuid, premiumUntil]
       );
-
-      console.log("👤 User premium synced:", userUuid);
     }
 
     return res.json({
       success: true,
-      premium_until,
-      original_transaction_id,
+      premium_until: premiumUntil,
     });
   } catch (err) {
-    console.error("🔥 SUBSCRIPTION CLAIM ERROR:", err);
+    console.error("SUBSCRIPTION ERROR:", err);
     return res.status(500).json({
       success: false,
-      error: err?.message || "Failed to link subscription",
+      error: "Failed to activate subscription",
     });
   }
 });
+
 
 
 
