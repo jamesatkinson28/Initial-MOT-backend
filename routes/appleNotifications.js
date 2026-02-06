@@ -71,21 +71,23 @@ router.post("/", async (req, res) => {
     // Immediate revocation events
     // --------------------------------------------------
     if (notificationType === "EXPIRED" || notificationType === "REFUND") {
-      await query(
-        `
-        UPDATE premium_entitlements
-        SET
-          premium_until = NOW(),
-          last_notification_type = $2,
-          last_notification_at = NOW()
-        WHERE transaction_id = $1
-        `,
-        [String(originalTransactionId), notificationType]
-      );
+	  await query(
+		`
+		UPDATE premium_entitlements
+		SET
+		  premium_until = NOW(),
+		  status = 'expired',
+		  last_notification_type = $2,
+		  last_notification_at = NOW()
+		WHERE transaction_id = $1
+		`,
+		[String(originalTransactionId), notificationType]
+	  );
 
-      console.log("APPLE IAP REVOKED:", notificationType, originalTransactionId);
-      return res.json({ ok: true });
-    }
+	  console.log("APPLE IAP REVOKED:", notificationType, originalTransactionId);
+	  return res.json({ ok: true });
+	}
+
 
     // --------------------------------------------------
     // Non-renewing (grace period allowed)
