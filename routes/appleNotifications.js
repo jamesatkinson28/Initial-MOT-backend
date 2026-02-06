@@ -50,9 +50,27 @@ export async function handleAppleNotification(payload) {
       break;
   }
 }
-router.post("/iap/apple/notifications", async (req, res) => {
+router.post("/", async (req, res) => {
+  console.log("🍎 APPLE WEBHOOK HIT", {
+    contentType: req.headers["content-type"],
+    isBuffer: Buffer.isBuffer(req.body),
+    bodyLength: req.body?.length,
+  });
   try {
-    const { signedPayload } = req.body || {};
+    let signedPayload;
+
+	try {
+	  const parsed = JSON.parse(req.body.toString("utf8"));
+	  signedPayload = parsed.signedPayload;
+	} catch (e) {
+	  console.error("APPLE WEBHOOK: invalid JSON");
+	  return res.sendStatus(400);
+	}
+
+	if (!signedPayload) {
+	  console.error("APPLE WEBHOOK: missing signedPayload");
+	  return res.sendStatus(400);
+	}
     if (!signedPayload) {
       return res.status(400).json({ ok: false, error: "Missing signedPayload" });
     }
