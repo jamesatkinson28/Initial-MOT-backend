@@ -63,6 +63,8 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
    SUBSCRIPTION CLAIM / LINK
 ------------------------------------------------------------------- */
 router.post("/subscription", optionalAuth, async (req, res) => {
+  console.log("📥 /subscription payload", req.body);
+
   try {
     const { originalTransactionId } = req.body;
 
