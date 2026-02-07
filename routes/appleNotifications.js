@@ -208,6 +208,7 @@ router.post("/", async (req, res) => {
 	    product_id,
 	    platform,
 	    status,
+		is_confirmed,
 	    last_notification_type,
 	    last_notification_at
 	  )
@@ -219,6 +220,7 @@ router.post("/", async (req, res) => {
 	    $5,
 	    'ios',
 	    'active',
+		true,
 	    $6,
 	   NOW()
 	  )
@@ -233,6 +235,7 @@ router.post("/", async (req, res) => {
 	    product_id = COALESCE(EXCLUDED.product_id, premium_entitlements.product_id),
 	    platform = 'ios',
 	    status = 'active',
+		is_confirmed = true,
 	    last_notification_type = EXCLUDED.last_notification_type,
 	    last_notification_at = NOW()
       `,
