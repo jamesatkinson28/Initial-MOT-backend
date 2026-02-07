@@ -64,15 +64,7 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
 ------------------------------------------------------------------- */
 router.post("/subscription", optionalAuth, async (req, res) => {
   try {
-    const { productId, transactionId, platform, guestId } = req.body;
-	
-	console.log("🧾 IAP SUBSCRIPTION CLAIM", {
-	  productId,
-	  transactionId,
-	  platform,
-	  userUuid,
-	  guestId: gId,
-	});	
+    const { productId, transactionId, platform, guestId } = req.body;	
 
     const userUuid = req.user?.id ?? null;
     const gId = guestId ?? req.guestId ?? null;
