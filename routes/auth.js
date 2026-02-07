@@ -131,15 +131,24 @@ router.post("/register", async (req, res) => {
 // LOGIN
 // ==========================================
 router.post("/login", async (req, res) => {
-
   try {
     const { email, password } = req.body;
     const emailNorm = cleanEmail(email);
 
     const result = await query(
-      `SELECT id, uuid, email, password_hash, premium, premium_until, token_version, email_verified
-       FROM users
-       WHERE email=$1`,
+      `
+      SELECT
+        id,
+        uuid,
+        email,
+        password_hash,
+        premium,
+        premium_until,
+        token_version,
+        email_verified
+      FROM users
+      WHERE email = $1
+      `,
       [emailNorm]
     );
 
@@ -149,11 +158,7 @@ router.post("/login", async (req, res) => {
 
     const user = result.rows[0];
 
-
-
     const match = await bcrypt.compare(password, user.password_hash);
-
-
     if (!match) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
@@ -163,29 +168,83 @@ router.post("/login", async (req, res) => {
       return res.status(403).json({ error: "EMAIL_NOT_VERIFIED" });
     }
 
+    // ─────────────────────────────────────────────
+    // 🔁 GUEST → USER ENTITLEMENT MERGE (NEW)
+    // ─────────────────────────────────────────────
+    const guestId =
+      req.body.guestId ??
+      req.headers["x-guest-id"] ??
+      null;
+
+    if (guestId) {
+      const mergeResult = await query(
+        `
+        UPDATE premium_entitlements
+        SET
+          user_uuid = $1,
+          guest_id = NULL
+        WHERE
+          guest_id = $2
+          AND (user_uuid IS NULL OR user_uuid = $1)
+        `,
+        [user.uuid, guestId]
+      );
+
+      console.log("🔁 LOGIN MERGE GUEST → USER", {
+        userUuid: user.uuid,
+        guestId,
+        rowsAffected: mergeResult.rowCount,
+      });
+    }
+
+    // ─────────────────────────────────────────────
+    // 🔄 RESYNC USER PREMIUM FLAGS (RECOMMENDED)
+    // ─────────────────────────────────────────────
+    await query(
+      `
+      UPDATE users
+      SET
+        premium = pe.premium_until > NOW(),
+        premium_until = pe.premium_until
+      FROM premium_entitlements pe
+      WHERE
+        pe.user_uuid = users.uuid
+        AND users.uuid = $1
+        AND pe.premium_until > NOW()
+      `,
+      [user.uuid]
+    );
+
+    // ─────────────────────────────────────────────
+    // 🔐 TOKEN ISSUANCE (UNCHANGED)
+    // ─────────────────────────────────────────────
     const accessToken = signAccessToken(user);
     const refreshToken = generateRefreshToken();
     const refreshHash = hashRefresh(refreshToken);
 
     await query(
-      `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-       VALUES ($1, $2, NOW() + INTERVAL '30 days')
-       ON CONFLICT (user_id)
-       DO UPDATE SET token_hash = $2, expires_at = NOW() + INTERVAL '30 days'`,
+      `
+      INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+      VALUES ($1, $2, NOW() + INTERVAL '30 days')
+      ON CONFLICT (user_id)
+      DO UPDATE
+        SET token_hash = $2,
+            expires_at = NOW() + INTERVAL '30 days'
+      `,
       [user.id, refreshHash]
     );
 
-    res.json({
+    return res.json({
       accessToken,
       refreshToken,
       user: {
-        id: user.uuid,          // ✅ public identity is UUID
-		legacyId: user.id,
+        id: user.uuid,          // ✅ public identity
+        legacyId: user.id,      // optional
         email: user.email,
         premium: user.premium,
         premium_until: user.premium_until,
         token_version: user.token_version,
-        emailVerified: user.email_verified === true, // normalize to boolean
+        emailVerified: user.email_verified === true,
       },
     });
   } catch (err) {
@@ -193,6 +252,7 @@ router.post("/login", async (req, res) => {
     return res.status(500).json({ error: "Login failed" });
   }
 });
+
 
 
 // ==========================================
