@@ -41,6 +41,7 @@ export async function unlockSpec({
   transactionId = null,
   productId = null,
   platform = null,
+  unlockSource = "free", // "free" | "paid"
 }) {  console.log("🔥 unlockSpec ENTERED", {
     vrm,
     hasUser: !!user,
@@ -51,8 +52,12 @@ export async function unlockSpec({
   });
   if (!vrm) throw new Error("VRM required");
   if (!user && !guestId) {
-  throw new Error("No user or guest identity provided");
-}
+    throw new Error("No user or guest identity provided");
+  }
+  if (unlockSource === "free" && !isPremium) {
+    throw new Error("Premium subscription required");
+  }
+
   
   const vrmUpper = vrm.toUpperCase();
   const userUuid = user ? user.id : null;
@@ -94,33 +99,28 @@ export async function unlockSpec({
   // --------------------------------------------------
   let u = null;
   let isPremium = false;
+  let activeEntitlement = null;
 
-  if (userUuid) {
-    const userRow = await db.query(
+  if (userUuid || guestId) {
+    const ent = await db.query(
       `
-      SELECT premium, premium_until, monthly_unlocks_used
-      FROM users
-      WHERE uuid = $1
-      FOR UPDATE
+      SELECT original_transaction_id
+      FROM premium_entitlements
+      WHERE premium_until > NOW()
+        AND (
+          user_uuid = $1
+          OR guest_id = $2
+        )
+      ORDER BY premium_until DESC
+      LIMIT 1
       `,
-      [userUuid]
+      [userUuid, guestId]
     );
 
-    u = userRow.rows[0] ?? { monthly_unlocks_used: 0 };
-
-    const premiumRes = await db.query(
-	  `
-	  SELECT 1
-	  FROM premium_entitlements
-	  WHERE user_uuid = $1
-		AND premium_until > NOW()
-	  LIMIT 1
-	  `,
-	  [userUuid]
-	);
-
-	isPremium = premiumRes.rowCount > 0;
+    activeEntitlement = ent.rows[0] ?? null;
+    isPremium = !!activeEntitlement;
   }
+
 
   // --------------------------------------------------
   // ALREADY UNLOCKED BY OWNER (VRM)
@@ -328,9 +328,9 @@ if (
   await db.query(
   `
   INSERT INTO unlocked_specs
-    (user_id, guest_id, vrm, snapshot_id, transaction_id, product_id, platform)
+    (user_id, guest_id, vrm, snapshot_id, transaction_id, product_id, platform, entitlement_original_transaction_id)
   VALUES
-    ($1, $2, $3, $4, $5, $6, $7)
+    ($1, $2, $3, $4, $5, $6, $7, $8)
   ON CONFLICT DO NOTHING
   `,
   [
@@ -338,16 +338,19 @@ if (
     user ? null : guestId,
     vrmUpper,
     snapshotId,
-    transactionId,
+    unlockSource === "paid" ? transactionId : null,
     productId,
     platform,
+    unlockSource === "free"
+      ? activeEntitlement?.original_transaction_id
+      : null,
   ]
 );
 
   // --------------------------------------------------
   // INCREMENT MONTHLY FREE UNLOCKS (PREMIUM ONLY)
   // --------------------------------------------------
-  if (isPremium) {
+  if (unlockSource === "free" && isPremium) {
   if (userUuid) {
     // Logged-in premium user
     await db.query(

@@ -10,7 +10,7 @@ const router = express.Router();
 ------------------------------------------------------------------- */
 router.post("/spec-unlock", optionalAuth, async (req, res) => {
   try {
-    const { vrm, guestId, transactionId, productId, platform } = req.body;
+    const { vrm, guestId, transactionId, productId, platform, unlockSource } = req.body;
 
     console.log("📦 /spec-unlock payload", {
       vrm,
@@ -30,6 +30,7 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
         transactionId: transactionId ?? null,
         productId: productId ?? null,
         platform: platform ?? null,
+		unlockSource: unlockSource ?? (transactionId ? "paid" : "free"),
       });
     });
 
