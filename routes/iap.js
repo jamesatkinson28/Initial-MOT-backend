@@ -64,7 +64,7 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
 ------------------------------------------------------------------- */
 router.post("/subscription", optionalAuth, async (req, res) => {
   try {
-    const { productId, transactionId, platform, guestId } = req.body;	
+    const { productId, transactionId, originalTransactionId, platform, guestId } = req.body;
 
     const userUuid = req.user?.id ?? null;
     const gId = guestId ?? req.guestId ?? null;
@@ -77,49 +77,59 @@ router.post("/subscription", optionalAuth, async (req, res) => {
       return res.status(400).json({ error: "Missing productId or transactionId" });
     }
 
-    // 🔁 Determine subscription length
+    const originalTx = originalTransactionId ?? transactionId;
+    const latestTx = transactionId;
+
     const interval =
       productId === "garagegpt_premium_yearly"
         ? "1 year"
         : "1 month";
 
-    // 1️⃣ Create or extend entitlement
     const entitlementRes = await query(
       `
       INSERT INTO premium_entitlements (
-	    transaction_id,
-	    latest_transaction_id,
-	    product_id,
-	    platform,
-	    user_uuid,
-	    guest_id,
-	    premium_until,
-	    monthly_unlocks_used,
-	    is_confirmed
-	  )
-	  VALUES (
-	    $1, $1, $2, $3, $4, $5,
-	    NOW() + INTERVAL '${interval}',
-	    0,
-	    false
-	  )
-	  ON CONFLICT (transaction_id)
-	  DO UPDATE SET
-	    latest_transaction_id = EXCLUDED.latest_transaction_id,
-	    product_id = EXCLUDED.product_id,
-	    platform = EXCLUDED.platform,
-	    user_uuid = COALESCE(EXCLUDED.user_uuid, premium_entitlements.user_uuid),
-	    guest_id = COALESCE(EXCLUDED.guest_id, premium_entitlements.guest_id),
-	    premium_until = GREATEST(
-		  premium_entitlements.premium_until,
-		  EXCLUDED.premium_until
-	    ),
-	    monthly_unlocks_used = 0,
-	    is_confirmed = premium_entitlements.is_confirmed
-	  RETURNING premium_until;
+        original_transaction_id,
+        transaction_id,
+        latest_transaction_id,
+        product_id,
+        platform,
+        user_uuid,
+        guest_id,
+        premium_until,
+        monthly_unlocks_used,
+        is_confirmed
+      )
+      VALUES (
+        $1,
+        $2,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        NOW() + INTERVAL '${interval}',
+        0,
+        false
+      )
+      ON CONFLICT (original_transaction_id)
+      DO UPDATE SET
+        latest_transaction_id = EXCLUDED.latest_transaction_id,
+        transaction_id       = EXCLUDED.transaction_id,
+        product_id           = EXCLUDED.product_id,
+        platform             = EXCLUDED.platform,
+        user_uuid            = COALESCE(EXCLUDED.user_uuid, premium_entitlements.user_uuid),
+        guest_id             = COALESCE(EXCLUDED.guest_id, premium_entitlements.guest_id),
+        premium_until        = GREATEST(
+                                premium_entitlements.premium_until,
+                                EXCLUDED.premium_until
+                              ),
+        monthly_unlocks_used = 0,
+        is_confirmed         = premium_entitlements.is_confirmed
+      RETURNING premium_until;
       `,
       [
-        transactionId,
+        originalTx,
+        latestTx,
         productId,
         platform ?? "ios",
         userUuid,
@@ -129,7 +139,6 @@ router.post("/subscription", optionalAuth, async (req, res) => {
 
     const premiumUntil = entitlementRes.rows[0].premium_until;
 
-    // 2️⃣ Sync users table (TEMPORARY compatibility layer)
     if (userUuid) {
       await query(
         `
@@ -144,18 +153,13 @@ router.post("/subscription", optionalAuth, async (req, res) => {
       );
     }
 
-    return res.json({
-      success: true,
-      premium_until: premiumUntil,
-    });
+    return res.json({ success: true, premium_until: premiumUntil });
   } catch (err) {
     console.error("SUBSCRIPTION ERROR:", err);
-    return res.status(500).json({
-      success: false,
-      error: "Failed to activate subscription",
-    });
+    return res.status(500).json({ success: false });
   }
 });
+
 
 
 
