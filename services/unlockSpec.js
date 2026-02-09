@@ -390,6 +390,7 @@ await db.query(
       guest_id,
       vrm,
       snapshot_id,
+	  unlock_type,
       transaction_id,
       product_id,
       platform,
@@ -397,7 +398,7 @@ await db.query(
       entitlement_transaction_id
     )
   VALUES
-    ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
   ON CONFLICT DO NOTHING
   `,
   [
@@ -405,6 +406,7 @@ await db.query(
     user ? null : guestId,
     vrmUpper,
     snapshotId,
+	unlockSource,                 // 'paid' | 'free'
     unlockSource === "paid" ? transactionId : null,
     productId,
     platform,

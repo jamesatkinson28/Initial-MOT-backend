@@ -80,10 +80,9 @@ router.post("/", async (req, res) => {
 	}
 
 
+	// 🔑 Period transaction ID for refund/revoke
 	const refundedTransactionId =
-	  signedTransactionInfo?.transactionId ||
-	  transactionId ||
-	  null;
+	  tx?.transactionId ?? null;
 	  
 	// --------------------------------------------------
 	// IMMEDIATE REVOCATION (refund / revoke)
