@@ -50,12 +50,12 @@ export async function unlockSpec({
     productId,
     platform,
   });
+  let isPremium = false;
+  let activeEntitlement = null;
+  
   if (!vrm) throw new Error("VRM required");
   if (!user && !guestId) {
     throw new Error("No user or guest identity provided");
-  }
-  if (unlockSource === "free" && !isPremium) {
-    throw new Error("Premium subscription required");
   }
 
   
@@ -121,7 +121,13 @@ export async function unlockSpec({
     isPremium = !!activeEntitlement;
   }
 
-
+// --------------------------------------------------
+// FREE UNLOCK REQUIRES ACTIVE PREMIUM
+// --------------------------------------------------
+  if (unlockSource === "free" && !isPremium) {
+    throw new Error("Premium subscription required");
+  
+  }
   // --------------------------------------------------
   // ALREADY UNLOCKED BY OWNER (VRM)
   // --------------------------------------------------

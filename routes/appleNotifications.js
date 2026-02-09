@@ -112,7 +112,7 @@ router.post("/", async (req, res) => {
         `
         UPDATE premium_entitlements
         SET
-          premium_until = NOW(),
+          premium_until = LEAST(premium_until, NOW()),
           status = 'expired',
           last_notification_type = $2,
           last_notification_at = NOW()
