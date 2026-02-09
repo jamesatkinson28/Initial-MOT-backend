@@ -98,8 +98,6 @@ export async function unlockSpec({
   // LOCK USER ROW (monthly unlock tracking)
   // --------------------------------------------------
   let u = null;
-  let isPremium = false;
-  let activeEntitlement = null;
 
   if (userUuid || guestId) {
     const ent = await db.query(
