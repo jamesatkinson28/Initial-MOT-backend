@@ -80,29 +80,60 @@ router.post("/", async (req, res) => {
 	}
 
 
-    // --------------------------------------------------
-    // IMMEDIATE REVOCATION (refund / revoke)
-    // --------------------------------------------------
-    if (
-      notificationType === "REFUND" ||
-      notificationType === "REVOKE"
-    ) {
-      await query(
-        `
-        UPDATE premium_entitlements
-        SET
-          premium_until = NOW(),
-          status = 'revoked',
-          last_notification_type = $2,
-          last_notification_at = NOW()
-        WHERE original_transaction_id = $1
-        `,
-        [String(originalTransactionId), notificationType]
-      );
+	const refundedTransactionId =
+	  signedTransactionInfo?.transactionId ||
+	  transactionId ||
+	  null;
+	  
+	// --------------------------------------------------
+	// IMMEDIATE REVOCATION (refund / revoke)
+	// --------------------------------------------------
+	if (
+	  notificationType === "REFUND" ||
+	  notificationType === "REVOKE"
+	) {
+	  // 1️⃣ Revoke premium going forward
+	  await query(
+		`
+		UPDATE premium_entitlements
+		SET
+		  premium_until = LEAST(premium_until, NOW()),
+		  status = 'revoked',
+		  last_notification_type = $2,
+		  last_notification_at = NOW()
+		WHERE original_transaction_id = $1
+		`,
+		[String(originalTransactionId), notificationType]
+	  );
 
-      console.log("APPLE IAP REVOKED:", notificationType, originalTransactionId);
-      return res.json({ ok: true });
-    }
+	  // 2️⃣ Revoke ONLY free unlocks from the refunded billing period
+	  if (refundedTransactionId) {
+		await query(
+		  `
+		  UPDATE unlocked_specs
+		  SET
+			revoked_at = NOW(),
+			revoked_reason = 'subscription_refund'
+		  WHERE
+			unlock_type = 'free'
+			AND entitlement_transaction_id = $1
+			AND revoked_at IS NULL
+		  `,
+		  [String(refundedTransactionId)]
+		);
+	  }
+
+	  console.log(
+		"APPLE IAP REVOKED:",
+		notificationType,
+		"original:",
+		originalTransactionId,
+		"period:",
+		refundedTransactionId
+	  );
+
+	  return res.json({ ok: true });
+	}
 
     // --------------------------------------------------
     // FULL EXPIRY
