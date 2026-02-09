@@ -455,22 +455,22 @@ router.get("/spec/unlocked", optionalAuth, async (req, res) => {
     }
 
     const result = await query(
-      `
-      SELECT us.vrm, vss.spec_json
-      FROM unlocked_specs us
-      JOIN vehicle_spec_snapshots vss
-        ON vss.id = us.snapshot_id
-      WHERE
-        (
-          ($1::uuid IS NOT NULL AND us.user_id = $1)
-          OR
-          ($2 IS NOT NULL AND us.guest_id = $2)
-        )
-        AND us.revoked_at IS NULL
-      ORDER BY us.unlocked_at DESC
-      `,
-      [userId, guestId]
-    );
+	  `
+	  SELECT us.vrm, vss.spec_json
+	  FROM unlocked_specs us
+	  JOIN vehicle_spec_snapshots vss
+		ON vss.id = us.snapshot_id
+	  WHERE
+		(
+		  ($1::uuid IS NOT NULL AND us.user_id = $1)
+		  OR
+		  ($2::text IS NOT NULL AND us.guest_id = $2::text)
+		)
+		AND us.revoked_at IS NULL
+	  ORDER BY us.unlocked_at DESC
+	  `,
+	  [userId, guestId]
+	);
 
     return res.json(
       result.rows.map(row => ({
