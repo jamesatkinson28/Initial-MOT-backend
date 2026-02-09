@@ -102,7 +102,9 @@ export async function unlockSpec({
   if (userUuid || guestId) {
     const ent = await db.query(
       `
-      SELECT original_transaction_id
+      SELECT
+	    original_transaction_id,
+        latest_transaction_id
       FROM premium_entitlements
       WHERE premium_until > NOW()
         AND (
@@ -372,12 +374,22 @@ if (unlockSource === "free") {
   // --------------------------------------------------
   // LINK USER → SNAPSHOT
   // --------------------------------------------------
-  await db.query(
+await db.query(
   `
   INSERT INTO unlocked_specs
-    (user_id, guest_id, vrm, snapshot_id, transaction_id, product_id, platform, entitlement_original_transaction_id)
+    (
+      user_id,
+      guest_id,
+      vrm,
+      snapshot_id,
+      transaction_id,
+      product_id,
+      platform,
+      entitlement_original_transaction_id,
+      entitlement_transaction_id
+    )
   VALUES
-    ($1, $2, $3, $4, $5, $6, $7, $8)
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9)
   ON CONFLICT DO NOTHING
   `,
   [
@@ -388,16 +400,17 @@ if (unlockSource === "free") {
     unlockSource === "paid" ? transactionId : null,
     productId,
     platform,
+
+    // lifetime subscription id (already correct)
     unlockSource === "free"
       ? activeEntitlement?.original_transaction_id
       : null,
+
+    // 🔑 PERIOD transaction id (THIS is the new bit)
+    unlockSource === "free"
+      ? activeEntitlement?.latest_transaction_id
+      : null,
   ]
 );
-
-  return {
-    unlocked: true,
-   spec,
-    plateReused,
-  };
 
 }
