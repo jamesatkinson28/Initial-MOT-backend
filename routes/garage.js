@@ -1,11 +1,11 @@
 import express from "express";
-import { authRequired } from "../middleware/auth.js";
+import { optionalAuth } from "../middleware/auth.js";
 import { query } from "../db/db.js";
 
 const router = express.Router();
 
 // SAVE VEHICLE
-router.post("/save", authRequired, async (req, res) => {
+router.post("/save", optionalAuth, async (req, res) => {
   try {
     const { vrm, label } = req.body;
 
@@ -29,7 +29,7 @@ router.post("/save", authRequired, async (req, res) => {
 });
 
 // LIST VEHICLES
-router.get("/list", authRequired, async (req, res) => {
+router.get("/list", optionalAuth, async (req, res) => {
   try {
     const result = await query(
       `SELECT id, vrm, label, created_at
@@ -48,7 +48,7 @@ router.get("/list", authRequired, async (req, res) => {
 });
 
 // DELETE VEHICLE
-router.delete("/delete/:id", authRequired, async (req, res) => {
+router.delete("/delete/:id", optionalAuth, async (req, res) => {
   try {
     const { id } = req.params;
 

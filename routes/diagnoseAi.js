@@ -1,6 +1,6 @@
 // routes/diagnoseAi.js
 import express from "express";
-import { authRequired } from "../middleware/auth.js";
+import { optionalAuth } from "../middleware/auth.js";
 import { openai } from "../lib/openai.js";
 
 function escalateUrgency(aiUrgency, minUrgency) {
@@ -57,7 +57,7 @@ router.post(
     console.log("🔥 HIT diagnose/analyse");
     next();
   },
-  authRequired,
+  optionalAuth,
   async (req, res) => {
     try {
       // 🔒 Premium gate

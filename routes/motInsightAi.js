@@ -1,10 +1,10 @@
 import express from "express";
-import { authRequired } from "../middleware/auth.js";
+import { optionalAuth } from "../middleware/auth.js";
 import { openai } from "../lib/openai.js"; // adapt to your setup
 
 const router = express.Router();
 
-router.post("/mot-insight/explain", authRequired, async (req, res) => {
+router.post("/mot-insight/explain", optionalAuth, async (req, res) => {
   try {
     // premium gate
     if (!req.user?.premium) {
