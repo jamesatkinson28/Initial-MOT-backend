@@ -112,7 +112,7 @@ export function buildCleanSpec(apiResults) {
 	codes: {
 	  uvc: vCodes?.Uvc ?? null,
 	  low_emissions_compliance: vCodes?.LowEmissionsCompliance ?? null
-	}
+	},
 
 
     engine: {
