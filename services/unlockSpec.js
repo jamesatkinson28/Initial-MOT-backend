@@ -391,6 +391,7 @@ await db.query(
       vrm,
       snapshot_id,
 	  unlock_type,
+	  source,
       transaction_id,
       product_id,
       platform,
@@ -398,7 +399,7 @@ await db.query(
       entitlement_transaction_id
     )
   VALUES
-    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
   ON CONFLICT DO NOTHING
   `,
   [
@@ -407,6 +408,7 @@ await db.query(
     vrmUpper,
     snapshotId,
 	unlockSource,                 // 'paid' | 'free'
+	unlockSource === "paid" ? "iap" : "subscription",
     unlockSource === "paid" ? transactionId : null,
     productId,
     platform,
