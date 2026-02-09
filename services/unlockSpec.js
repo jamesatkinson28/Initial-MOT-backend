@@ -382,24 +382,34 @@ if (unlockSource === "free") {
   // --------------------------------------------------
   // LINK USER → SNAPSHOT
   // --------------------------------------------------
+const source = unlockSource === "paid" ? "iap" : "subscription";
+console.log("🧾 INSERT unlocked_specs", {
+  unlockSource,
+  source,
+  transactionId,
+  productId,
+  entitlement_original: activeEntitlement?.original_transaction_id ?? null,
+  entitlement_tx: activeEntitlement?.latest_transaction_id ?? null,
+});
+
 await db.query(
   `
-  INSERT INTO unlocked_specs
-    (
-      user_id,
-      guest_id,
-      vrm,
-      snapshot_id,
-	  unlock_type,
-	  source,
-      transaction_id,
-      product_id,
-      platform,
-      entitlement_original_transaction_id,
-      entitlement_transaction_id
-    )
-  VALUES
-    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+  INSERT INTO unlocked_specs (
+    user_id,
+    guest_id,
+    vrm,
+    snapshot_id,
+    unlock_type,
+    source,
+    transaction_id,
+    product_id,
+    platform,
+    entitlement_original_transaction_id,
+    entitlement_transaction_id
+  )
+  VALUES (
+    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11
+  )
   ON CONFLICT DO NOTHING
   `,
   [
@@ -407,21 +417,13 @@ await db.query(
     user ? null : guestId,
     vrmUpper,
     snapshotId,
-	unlockSource,                 // 'paid' | 'free'
-	unlockSource === "paid" ? "iap" : "subscription",
-    unlockSource === "paid" ? transactionId : null,
-    productId,
-    platform,
-
-    // lifetime subscription id (already correct)
-    unlockSource === "free"
-      ? activeEntitlement?.original_transaction_id
-      : null,
-
-    // 🔑 PERIOD transaction id (THIS is the new bit)
-    unlockSource === "free"
-      ? activeEntitlement?.latest_transaction_id
-      : null,
+    unlockSource,                         // $5 unlock_type
+    source,                               // $6 source
+    unlockSource === "paid" ? transactionId : null, // $7 transaction_id ✅
+    productId,                            // $8 product_id
+    platform,                             // $9 platform
+    unlockSource === "free" ? activeEntitlement?.original_transaction_id : null, // $10
+    unlockSource === "free" ? activeEntitlement?.latest_transaction_id : null,   // $11
   ]
 );
 
