@@ -60,9 +60,14 @@ router.post(
   optionalAuth,
   async (req, res) => {
     try {
-      // 🔒 Premium gate
-      if (!req.user?.premium) {
-        return res.status(403).json({ error: "Premium required" });
+      const userId = req.user?.id ?? null;
+      const guestId =
+	    req.guestId ??
+	    req.query.guestId ??
+	    null;
+
+      if (!userId && !guestId) {
+        return res.status(401).json({ error: "Not authorised" });
       }
 
       const {
