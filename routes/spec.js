@@ -444,20 +444,29 @@ router.get("/spec", optionalAuth, async (req, res) => {
 // ------------------------------------------------------------
 // RESTORE UNLOCKED SPECS (READ-ONLY)
 // ------------------------------------------------------------
-router.get("/spec/unlocked", authRequired, async (req, res) => {
+router.get("/spec/unlocked", optionalAuth, async (req, res) => {
   try {
     const user_id = req.user.id;
-
+	const guestId = req.guestId ?? null;
+	
     const result = await query(
 	  `
 	  SELECT us.vrm, vss.spec_json
 	  FROM unlocked_specs us
-	  JOIN vehicle_spec_snapshots vss ON vss.id = us.snapshot_id
-	  WHERE us.user_id = $1
+	  JOIN vehicle_spec_snapshots vss
+		ON vss.id = us.snapshot_id
+	  WHERE
+		(
+		  ($1::uuid IS NOT NULL AND us.user_id = $1)
+		  OR
+		  ($2 IS NOT NULL AND us.guest_id = $2)
+		)
+		AND us.revoked_at IS NULL
 	  ORDER BY us.unlocked_at DESC
 	  `,
-	  [user_id]
+	  [userId, guestId]
 	);
+	
 
     return res.json(
       result.rows.map(row => ({
@@ -472,6 +481,8 @@ router.get("/spec/unlocked", authRequired, async (req, res) => {
     });
   }
 });
+
+
 router.get("/spec/status", authRequired, async (req, res) => {
   const vrm = req.query.vrm?.toUpperCase();
   if (!vrm) return res.status(400).json({ error: "VRM required" });

@@ -196,6 +196,31 @@ router.post("/login", async (req, res) => {
         rowsAffected: mergeResult.rowCount,
       });
     }
+	
+	// ─────────────────────────────────────────────
+	// 🔁 GUEST → USER UNLOCKED SPECS MERGE (REQUIRED)
+	// ─────────────────────────────────────────────
+	if (guestId) {
+	  const unlockMerge = await query(
+		`
+		UPDATE unlocked_specs
+		SET
+		  user_id = $1,
+		  guest_id = NULL
+		WHERE
+		  guest_id = $2
+		  AND user_id IS NULL
+		`,
+		[user.uuid, guestId]
+	  );
+
+	  console.log("🔁 LOGIN MERGE UNLOCKED SPECS", {
+		userUuid: user.uuid,
+		guestId,
+		rowsAffected: unlockMerge.rowCount,
+	  });
+	}
+
 
     // ─────────────────────────────────────────────
     // 🔄 RESYNC USER PREMIUM FLAGS (RECOMMENDED)
