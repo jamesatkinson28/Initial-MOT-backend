@@ -63,7 +63,8 @@ export function buildCleanSpec(apiResults) {
   const vd = apiResults?.VehicleDetails || {};
   const vId = vd.VehicleIdentification || {};
   const vTech = vd.DvlaTechnicalDetails || {};
-  const vCodes = vd.VehicleCodes || {};
+  const vCodes = apiResults?.VehicleCodes || {};
+console.log("🧬 VehicleCodes payload:", vCodes);
 
   const model = apiResults?.ModelDetails || {};
   const mId = model.ModelIdentification || {};
@@ -425,7 +426,7 @@ router.get("/spec", optionalAuth, async (req, res) => {
 
     const result = await query(
       `
-      SELECT vss.spec_json
+      SELECT vss.spec_json, vss.engine_code, vss.tyre_data
       FROM unlocked_specs us
       JOIN vehicle_spec_snapshots vss ON vss.id = us.snapshot_id
       WHERE us.vrm = $1
@@ -443,7 +444,11 @@ router.get("/spec", optionalAuth, async (req, res) => {
       return res.status(403).json({ error: "Spec not unlocked" });
     }
 
-    return res.json(result.rows[0].spec_json);
+    return res.json({
+	  ...result.rows[0].spec_json,
+	  engineCode: result.rows[0].engine_code,
+	  tyres: result.rows[0].tyre_data,
+	});
   } catch (err) {
     console.error("❌ FETCH SPEC ERROR:", err);
     return res.status(500).json({ error: "Failed to fetch spec" });
@@ -467,7 +472,7 @@ router.get("/spec/unlocked", optionalAuth, async (req, res) => {
 
     const result = await query(
 	  `
-	  SELECT us.vrm, vss.spec_json
+	  SELECT us.vrm, vss.spec_json, vss.engine_code, vss.tyre_data
 	  FROM unlocked_specs us
 	  JOIN vehicle_spec_snapshots vss
 		ON vss.id = us.snapshot_id
@@ -484,11 +489,15 @@ router.get("/spec/unlocked", optionalAuth, async (req, res) => {
 	);
 
     return res.json(
-      result.rows.map(row => ({
-        reg: row.vrm,
-        spec: row.spec_json,
-      }))
-    );
+	  result.rows.map(row => ({
+		reg: row.vrm,
+		spec: {
+		  ...row.spec_json,
+		  engineCode: row.engine_code,
+		  tyres: row.tyre_data,
+		},
+	  }))
+	);
   } catch (err) {
     console.error("❌ SPEC RESTORE ERROR:", err);
     return res.status(500).json({
