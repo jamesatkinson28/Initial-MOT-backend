@@ -321,6 +321,49 @@ if (
   );
 
   const spec = specRow.rows[0]?.spec_json || null;
+  
+  // --------------------------------------------------
+// RESERVE MONTHLY FREE UNLOCK (PREMIUM ONLY)
+// --------------------------------------------------
+if (unlockSource === "free") {
+  if (!isPremium) {
+    throw new Error("Premium subscription required");
+  }
+
+  if (userUuid) {
+    const res = await db.query(
+      `
+      UPDATE users
+      SET monthly_unlocks_used = monthly_unlocks_used + 1
+      WHERE uuid = $1
+        AND monthly_unlocks_used < 3
+      RETURNING monthly_unlocks_used
+      `,
+      [userUuid]
+    );
+
+    if (res.rowCount === 0) {
+      throw new Error("Monthly free unlock limit reached");
+    }
+  } else if (guestId) {
+    const res = await db.query(
+      `
+      UPDATE premium_entitlements
+      SET monthly_unlocks_used = monthly_unlocks_used + 1
+      WHERE guest_id = $1
+        AND premium_until > NOW()
+        AND monthly_unlocks_used < 3
+      RETURNING monthly_unlocks_used
+      `,
+      [guestId]
+    );
+
+    if (res.rowCount === 0) {
+      throw new Error("Monthly free unlock limit reached");
+    }
+  }
+}
+
 
   // --------------------------------------------------
   // LINK USER → SNAPSHOT
@@ -346,36 +389,6 @@ if (
       : null,
   ]
 );
-
-  // --------------------------------------------------
-  // INCREMENT MONTHLY FREE UNLOCKS (PREMIUM ONLY)
-  // --------------------------------------------------
-  if (unlockSource === "free" && isPremium) {
-  if (userUuid) {
-    // Logged-in premium user
-    await db.query(
-      `
-      UPDATE users
-      SET monthly_unlocks_used = monthly_unlocks_used + 1
-      WHERE uuid = $1
-        AND monthly_unlocks_used < 3
-      `,
-      [userUuid]
-    );
-  } else if (guestId) {
-    // Guest premium
-    await db.query(
-      `
-      UPDATE premium_entitlements
-      SET monthly_unlocks_used = monthly_unlocks_used + 1
-      WHERE guest_id = $1
-        AND premium_until > NOW()
-        AND monthly_unlocks_used < 3
-      `,
-      [guestId]
-    );
-  }
-}
 
   return {
     unlocked: true,
