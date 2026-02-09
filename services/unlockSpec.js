@@ -41,8 +41,8 @@ export async function unlockSpec({
   transactionId = null,
   productId = null,
   platform = null,
-}) {
-  console.log("🔥 unlockSpec ENTERED", {
+  unlockSource = null, // "free" | "paid"
+}) {  console.log("🔥 unlockSpec ENTERED", {
     vrm,
     hasUser: !!user,
     hasGuest: !!guestId,
@@ -50,71 +50,68 @@ export async function unlockSpec({
     productId,
     platform,
   });
-
+  let isPremium = false;
+  let activeEntitlement = null;
+  
   if (!vrm) throw new Error("VRM required");
   if (!user && !guestId) {
     throw new Error("No user or guest identity provided");
   }
+  
+  const derivedUnlockSource =
+  transactionId && productId
+    ? "paid"
+    : "free";
 
+unlockSource = derivedUnlockSource;
+  
+
+  
   const vrmUpper = vrm.toUpperCase();
   const userUuid = user ? user.id : null;
+  
+  // --------------------------------------------------
+// TRANSACTION ID DEDUPE (AUTHORITATIVE)
+// --------------------------------------------------
+  if (transactionId) {
+  const txCheck = await db.query(
+    `
+    SELECT snapshot_id
+    FROM unlocked_specs
+    WHERE transaction_id = $1
+    `,
+    [transactionId]
+  );
 
-  // --------------------------------------------------
-  // DERIVE UNLOCK SOURCE (AUTHORITATIVE)
-  // --------------------------------------------------
-  // Paid = has StoreKit transaction
-  // Free = no transaction (subscription free unlock)
-  const unlockSource =
-    transactionId && productId
-      ? "paid"
-      : "free";
-
-  // Safety guard – never allow silent corruption
-  if (unlockSource === "paid" && !transactionId) {
-    throw new Error("Paid unlock missing transactionId");
-  }
-
-  // --------------------------------------------------
-  // TRANSACTION ID DEDUPE (PAID ONLY)
-  // --------------------------------------------------
-  if (unlockSource === "paid") {
-    const txCheck = await db.query(
+  if (txCheck.rowCount > 0) {
+    const snap = await db.query(
       `
-      SELECT snapshot_id
-      FROM unlocked_specs
-      WHERE transaction_id = $1
+      SELECT spec_json
+      FROM vehicle_spec_snapshots
+      WHERE id = $1
       `,
-      [transactionId]
+      [txCheck.rows[0].snapshot_id]
     );
 
-    if (txCheck.rowCount > 0) {
-      const snap = await db.query(
-        `
-        SELECT spec_json
-        FROM vehicle_spec_snapshots
-        WHERE id = $1
-        `,
-        [txCheck.rows[0].snapshot_id]
-      );
-
-      return {
-        alreadyUnlocked: true,
-        spec: snap.rows[0]?.spec_json || null,
-      };
-    }
+    return {
+      alreadyUnlocked: true,
+      spec: snap.rows[0]?.spec_json || null,
+    };
   }
+}
+
+
 
   // --------------------------------------------------
-  // CHECK ACTIVE PREMIUM (FREE UNLOCKS ONLY)
+  // LOCK USER ROW (monthly unlock tracking)
   // --------------------------------------------------
-  let isPremium = false;
-  let activeEntitlement = null;
+  let u = null;
 
-  if (unlockSource === "free") {
+  if (userUuid || guestId) {
     const ent = await db.query(
       `
       SELECT
-        original_transaction_id,
+	    original_transaction_id,
         latest_transaction_id
       FROM premium_entitlements
       WHERE premium_until > NOW()
@@ -130,14 +127,15 @@ export async function unlockSpec({
 
     activeEntitlement = ent.rows[0] ?? null;
     isPremium = !!activeEntitlement;
-
-    if (!isPremium) {
-      throw new Error("Premium subscription required");
-    }
   }
 
-  // ⬇️ execution continues into snapshot creation + INSERT
-
+// --------------------------------------------------
+// FREE UNLOCK REQUIRES ACTIVE PREMIUM
+// --------------------------------------------------
+  if (unlockSource === "free" && !isPremium) {
+    throw new Error("Premium subscription required");
+  
+  }
   // --------------------------------------------------
   // ALREADY UNLOCKED BY OWNER (VRM)
   // --------------------------------------------------
