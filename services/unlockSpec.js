@@ -1,5 +1,7 @@
 import { buildFingerprint } from "../routes/spec.js";
 import { fetchSpecDataFromAPI } from "./specProvider.js";
+import { fetchTyreDetails } from "./tyreParser.js";
+
 
 const DVLA_CACHE_TTL_HOURS = 24;
 
@@ -310,14 +312,32 @@ if (
 
   const engineCode =
     result.spec?.engine?.engine_code ?? null;
+	
+  // 🛞 TYRE CONFIGURATIONS — PUT IT HERE
+  let tyreData = null;
+
+  try {
+    const tyreConfigs = await fetchTyreDetails(vrmUpper);
+
+    tyreData = tyreConfigs?.length
+      ? {
+          configurations: tyreConfigs,
+          source: "TyreDetails",
+          fetched_at: new Date().toISOString(),
+        }
+      : null;
+  } catch (err) {
+    console.warn("⚠️ TyreDetails fetch failed", err.message);
+  }
+	
   // Create new snapshot
   const snapInsert = await db.query(
     `
-    INSERT INTO vehicle_spec_snapshots (vrm, spec_json, fingerprint, engine_code)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO vehicle_spec_snapshots (vrm, spec_json, fingerprint, engine_code, tyre_data)
+    VALUES ($1, $2, $3, $4, $5)
     RETURNING id
     `,
-    [vrmUpper, result.spec, currentFingerprint, engineCode]
+    [vrmUpper, result.spec, currentFingerprint, engineCode, tyreData]
   );
 
   snapshotId = snapInsert.rows[0].id;
