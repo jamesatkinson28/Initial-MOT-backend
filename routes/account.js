@@ -106,14 +106,24 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
       }
 
       const unlocksRes = await query(
-        `SELECT COUNT(*)::int AS count FROM unlocked_specs WHERE user_id = $1`,
-        [userUuid]
-      );
+	    `
+	    SELECT COUNT(*)::int AS count
+	    FROM unlocked_specs
+	    WHERE user_id = $1
+	  	  AND revoked_at IS NULL
+	    `,
+	    [userUuid]
+	  );
 
       const vrmsRes = await query(
-        `SELECT vrm FROM unlocked_specs WHERE user_id = $1`,
-        [userUuid]
-      );
+	    `
+	    SELECT vrm
+	    FROM unlocked_specs
+	    WHERE user_id = $1
+		  AND revoked_at IS NULL
+	    `,
+	    [userUuid]
+	  );
 
       return res.json({
         email: req.user.email,
@@ -165,14 +175,24 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
     );
 
     const unlocksRes = await query(
-      `SELECT COUNT(*)::int AS count FROM unlocked_specs WHERE guest_id = $1`,
-      [guestId]
-    );
+	  `
+	  SELECT COUNT(*)::int AS count
+	  FROM unlocked_specs
+	  WHERE guest_id = $1
+		AND revoked_at IS NULL
+	  `,
+	  [guestId]
+	);
 
     const vrmsRes = await query(
-      `SELECT vrm FROM unlocked_specs WHERE guest_id = $1`,
-      [guestId]
-    );
+	  `
+	  SELECT vrm
+	  FROM unlocked_specs
+	  WHERE guest_id = $1
+		AND revoked_at IS NULL
+	  `,
+	  [guestId]
+	);
 
     return res.json({
       premium: true,
