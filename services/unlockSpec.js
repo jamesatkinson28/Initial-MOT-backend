@@ -382,15 +382,15 @@ if (unlockSource === "free") {
   // --------------------------------------------------
   // LINK USER → SNAPSHOT
   // --------------------------------------------------
-const source = unlockSource === "paid" ? "iap" : "subscription";
-console.log("🧾 INSERT unlocked_specs", {
-  unlockSource,
-  source,
-  transactionId,
-  productId,
-  entitlement_original: activeEntitlement?.original_transaction_id ?? null,
-  entitlement_tx: activeEntitlement?.latest_transaction_id ?? null,
-});
+const entitlementOriginal =
+  unlockSource === "free"
+    ? activeEntitlement?.original_transaction_id
+    : null;
+
+const entitlementPeriod =
+  unlockSource === "free"
+    ? activeEntitlement?.latest_transaction_id
+    : null;
 
 await db.query(
   `
@@ -407,9 +407,7 @@ await db.query(
     entitlement_original_transaction_id,
     entitlement_transaction_id
   )
-  VALUES (
-    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11
-  )
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
   ON CONFLICT DO NOTHING
   `,
   [
@@ -417,14 +415,15 @@ await db.query(
     user ? null : guestId,
     vrmUpper,
     snapshotId,
-    unlockSource,                         // $5 unlock_type
-    source,                               // $6 source
-    unlockSource === "paid" ? transactionId : null, // $7 transaction_id ✅
-    productId,                            // $8 product_id
-    platform,                             // $9 platform
-    unlockSource === "free" ? activeEntitlement?.original_transaction_id : null, // $10
-    unlockSource === "free" ? activeEntitlement?.latest_transaction_id : null,   // $11
+    unlockSource,                                  // paid | free
+    unlockSource === "paid" ? "iap" : "subscription",
+    unlockSource === "paid" ? transactionId : null,
+    productId,
+    platform,
+    entitlementOriginal,                           // ✅ NULL when paid
+    entitlementPeriod,                             // ✅ NULL when paid
   ]
 );
+
 
 }
