@@ -6,11 +6,6 @@ const router = express.Router();
 
 router.post("/mot-insight/explain", optionalAuth, async (req, res) => {
   try {
-    // premium gate
-    if (!req.user?.premium) {
-      return res.status(403).json({ error: "Premium required" });
-    }
-
     const {
       vrm,
       vehicleLabel,
