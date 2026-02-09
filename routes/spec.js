@@ -63,6 +63,7 @@ export function buildCleanSpec(apiResults) {
   const vd = apiResults?.VehicleDetails || {};
   const vId = vd.VehicleIdentification || {};
   const vTech = vd.DvlaTechnicalDetails || {};
+  const vCodes = vd.VehicleCodes || {};
 
   const model = apiResults?.ModelDetails || {};
   const mId = model.ModelIdentification || {};
@@ -107,6 +108,12 @@ export function buildCleanSpec(apiResults) {
       original_colour: colour?.OriginalColour,
       cab_type: body?.CabType
     },
+	
+	codes: {
+	  uvc: vCodes?.Uvc ?? null,
+	  low_emissions_compliance: vCodes?.LowEmissionsCompliance ?? null
+	}
+
 
     engine: {
       engine_cc: ice?.EngineCapacityCc || vTech.EngineCapacityCc,
@@ -121,7 +128,11 @@ export function buildCleanSpec(apiResults) {
       fuel_type: vId.DvlaFuelType || powertrain.FuelType,
       engine_location: ice?.EngineLocation,
       engine_description: ice?.EngineDescription,
-      engine_code: ice?.EngineCode || vTech?.EngineCode,
+      engine_code:
+	    vCodes?.EngineCode ??
+	    ice?.EngineCode ??
+	    vTech?.EngineCode ??
+	    null,
 	  engine_number: ice?.EngineNumber || vTech?.EngineNumber
     },
 

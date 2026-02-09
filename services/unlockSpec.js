@@ -308,14 +308,16 @@ if (
     throw new Error("Failed to fetch spec for new vehicle");
   }
 
+  const engineCode =
+    result.spec?.engine?.engine_code ?? null;
   // Create new snapshot
   const snapInsert = await db.query(
     `
-    INSERT INTO vehicle_spec_snapshots (vrm, spec_json, fingerprint)
-    VALUES ($1, $2, $3)
+    INSERT INTO vehicle_spec_snapshots (vrm, spec_json, fingerprint, engine_code)
+    VALUES ($1, $2, $3, $4)
     RETURNING id
     `,
-    [vrmUpper, result.spec, currentFingerprint]
+    [vrmUpper, result.spec, currentFingerprint, engineCode]
   );
 
   snapshotId = snapInsert.rows[0].id;
