@@ -11,53 +11,61 @@ router.post("/mot-insight/explain", optionalAuth, async (req, res) => {
       vehicleLabel,
       latestMileage,
       vehicleAgeYears,
-      category, // { id, label, riskLevel, reason, estimatedMinCost, estimatedMaxCost }
-      motSummary, // small summary only (counts)
+      categoryId,
+      categoryLabel,
+      motSummary, // counts only
     } = req.body || {};
-	console.log("MOT AI payload:", {
-	  vrm,
-	  categoryId: category?.id,
-	  categoryLabel: category?.label,
-	});
 
+    console.log("MOT AI payload:", {
+      vrm,
+      categoryId,
+      categoryLabel,
+      vehicleLabel,
+      latestMileage,
+      vehicleAgeYears,
+    });
 
-    if (!vrm || !category?.id || !category?.label) {
+    if (!vrm || !categoryId || !categoryLabel) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
     const prompt = `
-You are GarageGPT, a UK MOT-focused assistant.
-Explain why this MOT risk category is flagged, in plain UK terms.
-Be specific, practical, and avoid making up facts. Use only the data provided.
+You are an experienced UK MOT tester.
 
-Vehicle: ${vehicleLabel || vrm}
-Age (years): ${vehicleAgeYears ?? "unknown"}
-Latest mileage: ${latestMileage ?? "unknown"}
+Your task is to explain what MOT testers commonly FAIL or ADVISE on
+for the vehicle below, specifically within the given category.
 
-Category: ${category.label}
-Risk level: ${category.riskLevel}
-Reason (from rules): ${category.reason}
-Estimated repair range: £${category.estimatedMinCost} - £${category.estimatedMaxCost}
+Use real MOT certificate wording where possible.
+Focus on known failure and advisory patterns for this type of vehicle.
+Do NOT speculate wildly and do NOT claim faults exist.
 
-MOT summary:
-- totalTests: ${motSummary?.totalTests ?? "unknown"}
-- totalFails: ${motSummary?.totalFails ?? "unknown"}
-- totalAdvisories: ${motSummary?.totalAdvisories ?? "unknown"}
+Vehicle:
+${vehicleLabel || vrm}
+Age: ${vehicleAgeYears ?? "unknown"} years
+Mileage: ${latestMileage ?? "unknown"}
 
-Return JSON ONLY with:
+Category:
+${categoryLabel}
+
+MOT history summary:
+- Tests recorded: ${motSummary?.totalTests ?? "unknown"}
+- Previous fails: ${motSummary?.totalFails ?? "unknown"}
+- Total advisories: ${motSummary?.totalAdvisories ?? "unknown"}
+
+Guidance:
+- It is acceptable to mention issues that have NOT yet appeared if they are commonly seen on this model.
+- Use MOT-style phrases such as "excessive play", "deteriorated", "corroded", "insecure", "ineffective".
+- Avoid generic phrases like "due to age and mileage".
+- If available data is limited, say so briefly.
+
+Return JSON ONLY in this exact format:
 {
   "headline": string (max 6 words),
-  "why": string (max 40 words, probabilistic language),
-  "checks": string[] (2–3 practical checks),
+  "why": string (max 40 words),
+  "checks": string[] (2–3 specific MOT check items),
   "tip": string (max 25 words),
-  "confidence": number (0-1)
+  "confidence": number (0–1)
 }
-
-Rules:
-- Do not claim faults exist.
-- Use “may”, “likely”, “suggests”.
-- If data is limited, say so briefly.
-- Avoid repeating wording across categories.
 `.trim();
 
     const completion = await openai.chat.completions.create({
