@@ -7,25 +7,25 @@ const router = express.Router();
 router.post("/mot-insight/explain", optionalAuth, async (req, res) => {
   try {
     const {
-      vrm,
-      vehicleLabel,
-      latestMileage,
-      vehicleAgeYears,
+      vehicle,
       categoryId,
       categoryLabel,
-      motSummary, // counts only
+      motSummary,
     } = req.body || {};
 
+    const vehicleLabel = vehicle?.label;
+    const vehicleAgeYears = vehicle?.ageYears;
+    const latestMileage = vehicle?.mileage;
+
     console.log("MOT AI payload:", {
-      vrm,
+      vehicleLabel,
+      vehicleAgeYears,
+      latestMileage,
       categoryId,
       categoryLabel,
-      vehicleLabel,
-      latestMileage,
-      vehicleAgeYears,
     });
 
-    if (!vrm || !categoryId || !categoryLabel) {
+    if (!categoryId || !categoryLabel) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
