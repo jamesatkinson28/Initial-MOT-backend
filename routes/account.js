@@ -140,41 +140,49 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
     // ==================================================
     // 2️⃣ GUEST
     // ==================================================
-    const guestId = req.guestId;
-    if (!guestId) {
-      return res.status(401).json({ error: "Not authorised" });
-    }
+	const guestId = req.guestId;
+	if (!guestId) {
+	  return res.status(401).json({ error: "Not authorised" });
+	}
 
-    const entRes = await query(
-      `
-      SELECT premium_until, monthly_unlocks_used, monthly_unlocks_reset_at
-      FROM premium_entitlements
-      WHERE guest_id = $1
-        AND status = 'active'
-        AND premium_until > NOW()
-      LIMIT 1
-      `,
-      [guestId]
-    );
+	// 1️⃣ Get entitlement (if exists)
+	const entRes = await query(
+	  `
+	  SELECT premium_until, monthly_unlocks_used, monthly_unlocks_reset_at
+	  FROM premium_entitlements
+	  WHERE guest_id = $1
+		AND status = 'active'
+	  LIMIT 1
+	  `,
+	  [guestId]
+	);
 
-    if (entRes.rowCount === 0) {
-      return res.json({
-        premium: false,
-        monthly_unlocks_remaining: 0,
-        total_unlocked: 0,
-        unlocked_vrms: [],
-      });
-    }
+	let premium = false;
+	let premiumUntil = null;
+	let monthlyUnlocksRemaining = 0;
 
-    const ent = entRes.rows[0];
+	if (entRes.rowCount > 0) {
+	  const ent = entRes.rows[0];
 
-    await maybeResetGuestMonthlyUnlocks(
-      guestId,
-      ent.premium_until,
-      ent.monthly_unlocks_reset_at
-    );
+	  if (ent.premium_until > new Date()) {
+		premium = true;
+		premiumUntil = ent.premium_until;
 
-    const unlocksRes = await query(
+		await maybeResetGuestMonthlyUnlocks(
+		  guestId,
+		  ent.premium_until,
+		  ent.monthly_unlocks_reset_at
+		);
+
+		monthlyUnlocksRemaining = Math.max(
+		  3 - ent.monthly_unlocks_used,
+		  0
+		);
+	  }
+	}
+
+	// 2️⃣ Always fetch unlocked specs
+	const unlocksRes = await query(
 	  `
 	  SELECT COUNT(*)::int AS count
 	  FROM unlocked_specs
@@ -184,7 +192,7 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
 	  [guestId]
 	);
 
-    const vrmsRes = await query(
+	const vrmsRes = await query(
 	  `
 	  SELECT vrm
 	  FROM unlocked_specs
@@ -194,22 +202,13 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
 	  [guestId]
 	);
 
-    return res.json({
-      premium: true,
-      premium_until: ent.premium_until,
-      monthly_unlocks_remaining: Math.max(
-        3 - ent.monthly_unlocks_used,
-        0
-      ),
-      total_unlocked: unlocksRes.rows[0]?.count || 0,
-      unlocked_vrms: vrmsRes.rows.map(r => r.vrm),
-    });
-
-  } catch (err) {
-    console.error("[Account] overview error:", err);
-    res.status(500).json({ error: "Failed to load account overview" });
-  }
-});
+	return res.json({
+	  premium,
+	  premium_until: premiumUntil,
+	  monthly_unlocks_remaining: monthlyUnlocksRemaining,
+	  total_unlocked: unlocksRes.rows[0]?.count || 0,
+	  unlocked_vrms: vrmsRes.rows.map(r => r.vrm),
+	});
 
 
 
