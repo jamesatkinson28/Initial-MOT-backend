@@ -210,6 +210,12 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
 	  unlocked_vrms: vrmsRes.rows.map(r => r.vrm),
 	});
 
+  } catch (err) {
+    console.error("[Account] overview error:", err);
+    res.status(500).json({ error: "Failed to load account overview" });
+  }
+});
+
 
 
 export default router;
