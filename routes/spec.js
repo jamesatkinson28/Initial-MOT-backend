@@ -40,20 +40,64 @@ function nextWeeklyRetryDate() {
 }
 
 export function buildFingerprint(spec) {
-  if (!spec?.identity) return null;
+  if (!spec || typeof spec !== "object") return null;
 
-  return [
-	spec.identity.make,
-	spec.identity.model,
-	spec.identity.generation,
-	spec.engine.engine_cc,
-	spec.fuel?.type,
-	spec.identity.body_style,
+  // Support both old and new schemas
+  const identity = spec.identity || {};
+  const engine = spec.engine || spec.powertrain?.engine || {}; // if you later nest
+  const fuel = spec.fuel || {};
+  
+  // v2 legacy fallbacks (if any old fields exist)
+  const engineCc =
+    engine.engine_cc ??
+    identity.engineCapacity ?? // legacy
+    spec.engine_cc ??
+    null;
+
+  const fuelType =
+    fuel.type ??
+    engine.fuel_type ??
+    identity.fuelType ?? // legacy
+    spec.fuel_type ??
+    null;
+
+  const bodyStyle =
+    identity.body_style ??
+    identity.bodyStyle ?? // legacy
+    null;
+
+  const make = identity.make ?? null;
+  const model = identity.model ?? null;
+
+  // Prefer stable “model fingerprint” parts
+  const generation =
+    identity.generation ??
+    identity.mark ??
+    null;
+
+  const series =
+    identity.series ??
+    null;
+
+  // Build fingerprint safely
+  const parts = [
+    make,
+    model,
+    generation,
+    series,
+    engineCc,
+    fuelType,
+    bodyStyle,
   ]
-    .filter(Boolean)
-    .join("|")
-    .toLowerCase();
+    .filter((v) => v !== null && v !== undefined && String(v).trim() !== "")
+    .map((v) => String(v).trim().toLowerCase());
+
+  // If we ended up with almost nothing, return null (don’t poison DB)
+  if (parts.length < 3) return null;
+
+  return parts.join("|");
 }
+
 
 // ------------------------------------------------------------
 // CLEAN SPEC BUILDER (STATIC DATA ONLY)
