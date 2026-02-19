@@ -43,12 +43,12 @@ export function buildFingerprint(spec) {
   if (!spec?.identity) return null;
 
   return [
-    spec.identity.make,
-    spec.identity.model,
-    spec.identity.monthOfFirstRegistration,
-    spec.identity.engineCapacity,
-    spec.identity.fuelType,
-    spec.identity.bodyStyle,
+	spec.identity.make,
+	spec.identity.model,
+	spec.identity.generation,
+	spec.engine.engine_cc,
+	spec.fuel?.type,
+	spec.identity.body_style,
   ]
     .filter(Boolean)
     .join("|")
@@ -68,6 +68,10 @@ console.log("🧬 VehicleCodes payload:", vCodes);
 
   const model = apiResults?.ModelDetails || {};
   const mId = model.ModelIdentification || {};
+  const classification = model.ModelClassification || {};
+  const bodyDetails = model.BodyDetails || {};
+  const powertrainType = model.Powertrain?.PowertrainType || null;
+
   const dims = model.Dimensions || {};
   const weights = model.Weights || {};
   const body = model.BodyDetails || {};
@@ -91,24 +95,35 @@ console.log("🧬 VehicleCodes payload:", vCodes);
   let clean = {
 	_meta: {
       generated_at: new Date().toISOString(),
-      spec_version: 2
+      spec_version: 3
     },
 	
-    identity: {
-      vrm: vId.Vrm,
-      make: mId.Make || vId.DvlaMake,
-      model: mId.Model || mId.Range || vId.DvlaModel,
-      variant: mId.ModelVariant,
-      year_of_manufacture: vId.YearOfManufacture,
-      body_style: body.BodyStyle,
-      number_of_doors: body.NumberOfDoors,
-      seats: body.NumberOfSeats,
-      wheelbase: body.WheelbaseType,
-      axles: body.NumberOfAxles,
-      country_of_origin: mId.CountryOfOrigin,
-      original_colour: colour?.OriginalColour,
-      cab_type: body?.CabType
-    },
+	identity: {
+	  vrm: vId.Vrm,
+	  make: mId.Make || vId.DvlaMake,
+	  range: mId.Range,
+	  model: mId.Model || vId.DvlaModel,
+	  variant: mId.ModelVariant,
+	  generation: mId.Mark,
+	  series: mId.Series,
+	  production_start: mId.StartDate,
+	  production_end: mId.EndDate,
+	  year_of_manufacture: vId.YearOfManufacture,
+	  body_style: body.BodyStyle,
+	  number_of_doors: body.NumberOfDoors,
+	  seats: body.NumberOfSeats,
+	  wheelbase: body.WheelbaseType,
+	  axles: body.NumberOfAxles,
+	  country_of_origin: mId.CountryOfOrigin,
+	  original_colour: colour?.OriginalColour,
+	  cab_type: body?.CabType
+	},
+	
+	platform: {
+	  name: body?.PlatformName,
+	  shared_across_models: body?.PlatformIsSharedAcrossModels
+	},
+
 	
 	codes: {
 	  uvc: vCodes?.Uvc ?? null,
@@ -129,6 +144,8 @@ console.log("🧬 VehicleCodes payload:", vCodes);
       fuel_type: vId.DvlaFuelType || powertrain.FuelType,
       engine_location: ice?.EngineLocation,
       engine_description: ice?.EngineDescription,
+	  engine_manufacturer: ice?.EngineManufacturer,
+      engine_family: ice?.EngineFamily ?? null,
       engine_code:
 	    vCodes?.EngineCode ??
 	    ice?.EngineCode ??
@@ -137,26 +154,34 @@ console.log("🧬 VehicleCodes payload:", vCodes);
 	  engine_number: ice?.EngineNumber || vTech?.EngineNumber
     },
 
-    performance: {
-      bhp: power?.Bhp,
-      ps: power?.Ps,
-      kw: power?.Kw,
-      torque_nm: torque?.Nm,
-      torque_lbft: torque?.LbFt,
-      zero_to_60_mph: stats?.ZeroToSixtyMph,
-      zero_to_100_kph: stats?.ZeroToOneHundredKph,
-      top_speed_mph: stats?.MaxSpeedMph,
-      top_speed_kph: stats?.MaxSpeedKph
-    },
+	performance: {
+	  bhp: power?.Bhp,
+	  ps: power?.Ps,
+	  kw: power?.Kw,
+	  power_rpm: power?.Rpm,
+	  torque_nm: torque?.Nm,
+	  torque_lbft: torque?.LbFt,
+	  torque_rpm: torque?.Rpm,
+	  zero_to_60_mph: stats?.ZeroToSixtyMph,
+	  zero_to_100_kph: stats?.ZeroToOneHundredKph,
+	  top_speed_mph: stats?.MaxSpeedMph,
+	  top_speed_kph: stats?.MaxSpeedKph
+	},
 
-    fuel_economy: {
-      urban_mpg: fuelEconomy?.UrbanColdMpg,
-      extra_urban_mpg: fuelEconomy?.ExtraUrbanMpg,
-      combined_mpg: fuelEconomy?.CombinedMpg,
-      urban_l_100km: fuelEconomy?.UrbanColdL100Km,
-      extra_urban_l_100km: fuelEconomy?.ExtraUrbanL100Km,
-      combined_l_100km: fuelEconomy?.CombinedL100Km
-    },
+	fuel: {
+	  type: vId.DvlaFuelType || powertrain.FuelType,
+	  tank_capacity_litres: body?.FuelTankCapacityLitres,
+	  economy: {
+		urban_mpg: fuelEconomy?.UrbanColdMpg,
+		extra_urban_mpg: fuelEconomy?.ExtraUrbanMpg,
+		combined_mpg: fuelEconomy?.CombinedMpg,
+		urban_l_100km: fuelEconomy?.UrbanColdL100Km,
+		extra_urban_l_100km: fuelEconomy?.ExtraUrbanL100Km,
+		combined_l_100km: fuelEconomy?.CombinedL100Km
+	  }
+	},
+	powertrain_type: powertrainType,
+
 
 	dimensions: {
 	  height_mm: dims?.HeightMm,
@@ -186,6 +211,12 @@ console.log("🧬 VehicleCodes payload:", vCodes);
       drive_type: transmission?.DriveType,
       driving_axle: transmission?.DrivingAxle
     },
+	
+	transmission: {
+	  type: transmission?.TransmissionType,
+	  gear_count: transmission?.NumberOfGears
+	},
+
 
     safety: {
       ncap_rating: safety?.EuroNcap?.NcapStarRating,
