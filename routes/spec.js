@@ -436,7 +436,7 @@ if (ev) {
     },
 
     supports_ota:
-      modelDetails?.AdditionalInformation?.Software?.SupportsOverTheAirSoftwareUpdate ?? null
+      model?.AdditionalInformation?.Software?.SupportsOverTheAirSoftwareUpdate ?? null
   };
 
   // ---- Flat fields for UI contract ----
