@@ -273,6 +273,19 @@ if (
   };
 }
 
+
+// -------------------------
+// FULL HYBRID (FHEV - Self Charging)
+// -------------------------
+const powertrainType = powertrain?.PowertrainType;
+
+if (powertrainType === "FHEV") {
+  clean.hybrid = {
+    powertrain_type: "FHEV",
+    hybrid_type: "Full Hybrid (Self Charging)",
+    external_charging: false
+  };
+}
 // -------------------------
 // ELECTRIC VEHICLE (EV)
 // -------------------------
