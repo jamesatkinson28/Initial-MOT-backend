@@ -277,8 +277,6 @@ if (
 // -------------------------
 // FULL HYBRID (FHEV - Self Charging)
 // -------------------------
-const powertrainType = powertrain?.PowertrainType;
-
 if (powertrainType === "FHEV") {
   clean.hybrid = {
     powertrain_type: "FHEV",
