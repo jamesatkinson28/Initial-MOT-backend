@@ -281,132 +281,202 @@ const ev = powertrain?.EvDetails;
 if (ev) {
   const tech = ev.TechnicalDetails || {};
   const perf = ev.Performance || {};
+  const transmission = powertrain?.Transmission || {};
 
-  const battery = tech.BatteryDetailsList?.[0] || {};
-  const motor = tech.MotorDetailsList?.[0] || {};
+  const batteries = tech.BatteryDetailsList || [];
+  const battery = batteries[0] || {};
+
+  const motors = tech.MotorDetailsList || [];
+  const primaryMotor =
+    motors.find(m => (m?.PowerKw ?? 0) > 0) || motors[0] || {};
 
   const ports = Array.isArray(tech.ChargePortDetailsList)
     ? tech.ChargePortDetailsList
     : [];
 
-  // Pick AC + DC ports robustly
   const acPort =
-    ports.find((p) => `${p?.PortType || ""}`.toUpperCase().includes("TYPE 2")) ||
-    ports.find((p) => (p?.MaxChargePowerKw ?? 0) > 0 && (p?.MaxChargePowerKw ?? 0) <= 22) ||
-    null;
+    ports.find(p => `${p?.PortType || ""}`.toUpperCase().includes("TYPE"))
+    || ports.find(p => (p?.MaxChargePowerKw ?? 0) <= 22)
+    || null;
 
   const dcPort =
-    ports.find((p) => `${p?.PortType || ""}`.toUpperCase().includes("CCS")) ||
-    ports.find((p) => (p?.MaxChargePowerKw ?? 0) >= 50) ||
-    null;
+    ports.find(p => `${p?.PortType || ""}`.toUpperCase().includes("CCS"))
+    || ports.find(p => (p?.MaxChargePowerKw ?? 0) >= 50)
+    || null;
 
-  // Helper: pick best 10–80 time (prefer 150kW, then 100, then 50)
+  // WLTP extraction
+  const wltp = perf.RangeFigures?.RangeTestCycleList?.find(
+    r => r?.EvRangeTestType === "WLTP"
+  );
+
+  // Smart 10–80 selection
   const pick1080TimeMins = (port) => {
     const list =
-      port?.ChargeTimes?.AverageChargeTimes10To80Percent ||
-      port?.ChargeTimes?.averageChargeTimes10To80Percent ||
-      [];
+      port?.ChargeTimes?.AverageChargeTimes10To80Percent || [];
 
     if (!Array.isArray(list) || list.length === 0) return null;
 
-    const preferredKw = [150, 100, 50];
-    for (const kw of preferredKw) {
-      const match = list.find(
-        (x) => Number(x?.ChargePortKw) === kw && x?.TimeInMinutes != null
-      );
-      if (match) return Number(match.TimeInMinutes);
+    const maxKw =
+      port?.MaxChargePowerKw != null
+        ? Number(port.MaxChargePowerKw)
+        : null;
+
+    if (maxKw) {
+      const candidates = list
+        .filter(x =>
+          x?.TimeInMinutes != null &&
+          Number(x?.ChargePortKw) <= maxKw
+        )
+        .sort((a, b) =>
+          Number(b.ChargePortKw) - Number(a.ChargePortKw)
+        );
+
+      if (candidates.length) {
+        return Number(candidates[0].TimeInMinutes);
+      }
     }
 
-    // fallback: shortest non-null time we can find
     const times = list
-      .map((x) => (x?.TimeInMinutes != null ? Number(x.TimeInMinutes) : null))
-      .filter((v) => typeof v === "number" && isFinite(v) && v > 0);
+      .map(x =>
+        x?.TimeInMinutes != null
+          ? Number(x.TimeInMinutes)
+          : null
+      )
+      .filter(v => typeof v === "number" && v > 0);
 
-    if (!times.length) return null;
-    return Math.min(...times);
+    return times.length ? Math.min(...times) : null;
   };
 
   const acKw =
-    acPort?.MaxChargePowerKw != null ? Number(acPort.MaxChargePowerKw) : null;
-  const dcKw =
-    dcPort?.MaxChargePowerKw != null ? Number(dcPort.MaxChargePowerKw) : null;
+    acPort?.MaxChargePowerKw != null
+      ? Number(acPort.MaxChargePowerKw)
+      : null;
 
-  const avg1080Mins = pick1080TimeMins(dcPort) ?? pick1080TimeMins(acPort);
+  const dcKw =
+    perf?.MaxChargeInputPowerKw
+      ?? (dcPort?.MaxChargePowerKw != null
+          ? Number(dcPort.MaxChargePowerKw)
+          : null);
+
+  const avg1080 =
+    pick1080TimeMins(dcPort)
+    ?? pick1080TimeMins(acPort)
+    ?? null;
+
+  const teslaSupercharging = tech.TeslaSupercharging || {};
 
   clean.ev = {
     powertrain_type: tech.PowertrainType ?? "BEV",
 
     efficiency: {
       wh_per_mile: perf.WhMile ?? null,
-      real_range_miles: perf.RangeFigures?.RealRangeMiles ?? null,
-      real_range_km: perf.RangeFigures?.RealRangeKm ?? null,
-      // If you ever want WLTP from RangeTestCycleList, you can add it here later
+      real_range_miles:
+        perf.RangeFigures?.RealRangeMiles ?? null,
+      real_range_km:
+        perf.RangeFigures?.RealRangeKm ?? null,
+      zero_emission_miles:
+        perf.RangeFigures?.ZeroEmissionMiles ?? null,
+      wltp_range_miles:
+        wltp?.CombinedRangeMiles ?? null,
+      wltp_range_km:
+        wltp?.CombinedRangeKm ?? null
     },
 
     battery: {
       total_kwh: battery.TotalCapacityKwh ?? null,
-      usable_kwh: battery.UsableCapacityKwh ?? null,
+      usable_kwh:
+        battery.UsableCapacityKwh
+        ?? battery.UsableKwh
+        ?? null,
       chemistry: battery.Chemistry ?? null,
-      // Voltage is often 0 in provider data; treat 0 as null
       voltage:
         battery.Voltage != null && Number(battery.Voltage) > 0
           ? Number(battery.Voltage)
           : null,
       location: battery.LocationOnVehicle ?? null,
-      warranty_months: battery.ManufacturerWarrantyMonths ?? null,
-      warranty_miles: battery.ManufacturerWarrantyMiles ?? null,
+      warranty_months:
+        battery.ManufacturerWarrantyMonths ?? null,
+      warranty_miles:
+        battery.ManufacturerWarrantyMiles ?? null
     },
 
     charging: {
       ac_kw: acKw,
       dc_kw: dcKw,
       ac_port_type: acPort?.PortType ?? null,
-      ac_port_location: acPort?.LocationOnVehicle ?? null,
       dc_port_type: dcPort?.PortType ?? null,
+      ac_port_location: acPort?.LocationOnVehicle ?? null,
       dc_port_location: dcPort?.LocationOnVehicle ?? null,
-      avg_10_to_80_mins: avg1080Mins,
+      avg_10_to_80_mins: avg1080
     },
 
     motor: {
-      power_kw: motor.PowerKw ?? null,
-      torque_nm: motor.MaxTorqueNm ?? null,
-      location: motor.MotorLocation ?? null,
-      axle: motor.AxleDrivenByMotor ?? null,
-      regen: motor.SupportsRegenerativeBraking ?? null,
-      // Optional: keep motor type if provider sends it
-      motor_type: motor.MotorType ?? null,
+      power_kw: primaryMotor.PowerKw ?? null,
+      torque_nm: primaryMotor.MaxTorqueNm ?? null,
+      location: primaryMotor.MotorLocation ?? null,
+      axle:
+        primaryMotor.AxleDrivenByMotor
+        ?? transmission?.DrivingAxle
+        ?? null,
+      regen: primaryMotor.SupportsRegenerativeBraking ?? null,
+      motor_type: primaryMotor.MotorType ?? null
     },
+
+    supercharging: {
+      is_tesla_compatible:
+        tech.IsTeslaSuperchargerCompatible ?? false,
+      v2_max_kw:
+        teslaSupercharging.Version2?.MaxChargeKw ?? null,
+      v2_10_80_min:
+        teslaSupercharging.Version2?.AverageChargeTime10To80Percent ?? null,
+      v3_max_kw:
+        teslaSupercharging.Version3?.MaxChargeKw ?? null,
+      v3_10_80_min:
+        teslaSupercharging.Version3?.AverageChargeTime10To80Percent ?? null
+    },
+
+    supports_ota:
+      modelDetails?.AdditionalInformation?.Software?.SupportsOverTheAirSoftwareUpdate ?? null
   };
 
-  // -------------------------
-  // FLAT EV FIELDS (UI CONTRACT)
-  // -------------------------
+  // ---- Flat fields for UI contract ----
+
   clean.ev = {
     ...clean.ev,
 
     battery_chemistry: clean.ev.battery.chemistry,
     battery_total_kwh: clean.ev.battery.total_kwh,
     battery_usable_kwh: clean.ev.battery.usable_kwh,
-    battery_warranty_years: clean.ev.battery.warranty_months
-      ? Math.round(clean.ev.battery.warranty_months / 12)
-      : null,
-    battery_warranty_miles: clean.ev.battery.warranty_miles,
+    battery_warranty_years:
+      clean.ev.battery.warranty_months
+        ? Math.round(clean.ev.battery.warranty_months / 12)
+        : null,
+    battery_warranty_miles:
+      clean.ev.battery.warranty_miles,
 
-    wltp_range_miles: clean.ev.efficiency.real_range_miles,
-    wltp_range_km: clean.ev.efficiency.real_range_km,
-    wh_per_mile: clean.ev.efficiency.wh_per_mile,
+    wltp_range_miles:
+      clean.ev.efficiency.wltp_range_miles
+      ?? clean.ev.efficiency.real_range_miles
+      ?? clean.ev.efficiency.zero_emission_miles
+      ?? null,
 
-    miles_per_kwh: clean.ev.efficiency.wh_per_mile
-      ? Number((1000 / clean.ev.efficiency.wh_per_mile).toFixed(2))
-      : null,
+    wh_per_mile:
+      clean.ev.efficiency.wh_per_mile,
+
+    miles_per_kwh:
+      clean.ev.efficiency.wh_per_mile
+        ? Number(
+            (1000 / clean.ev.efficiency.wh_per_mile).toFixed(2)
+          )
+        : null,
 
     ac_charge_kw: clean.ev.charging.ac_kw,
     dc_charge_kw: clean.ev.charging.dc_kw,
-    charge_10_80_min: clean.ev.charging.avg_10_to_80_mins,
+    charge_10_80_min:
+      clean.ev.charging.avg_10_to_80_mins,
 
-    motor_type: clean.ev.motor.power_kw ? "Electric Motor" : null,
     motor_location: clean.ev.motor.location,
-    axle_driven_by_motor: clean.ev.motor.axle,
+    axle_driven_by_motor: clean.ev.motor.axle
   };
 }
 
