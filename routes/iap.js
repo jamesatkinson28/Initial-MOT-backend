@@ -36,28 +36,52 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
 
     return res.json({ success: true, ...result });
   } catch (err) {
-    console.error("❌ IAP SPEC UNLOCK ERROR:", err);
+	  console.error("❌ IAP SPEC UNLOCK ERROR:", err);
 
-    const message = err?.message || "";
+	  const message = err?.message || "";
 
-    if (
-      message.toLowerCase().includes("retention") ||
-      message.toLowerCase().includes("dvla")
-    ) {
-      return res.status(409).json({
-        success: false,
-        retention: true,
-        retryAfterDays: 7,
-        message:
-          "This registration is currently being updated by DVLA. Please try again in a few days.",
-      });
-    }
+	  // ⛔ Still inside retention window
+	  if (message === "RETENTION_WAIT") {
+		return res.status(409).json({
+		  success: false,
+		  retention: true,
+		  retryAfterDays: 7,
+		  message:
+			"This registration is currently awaiting DVLA update. Please retry after the next weekly update."
+		});
+	  }
 
-    return res.status(500).json({
-      success: false,
-      error: message || "Failed to unlock specification",
-    });
-  }
+	  // 💰 Provider returned no spec (eligible for refund if paid)
+	  if (message === "SPEC_NULL") {
+		return res.status(422).json({
+		  success: false,
+		  refund: true,
+		  message:
+			"No specification data was returned for this registration."
+		});
+	  }
+
+	  // 🔒 Premium required
+	  if (message === "Premium subscription required") {
+		return res.status(403).json({
+		  success: false,
+		  message: "Premium subscription required"
+		});
+	  }
+
+	  // 📉 Monthly free limit hit
+	  if (message === "Monthly free unlock limit reached") {
+		return res.status(403).json({
+		  success: false,
+		  message: "Monthly free unlock limit reached"
+		});
+	  }
+
+	  return res.status(500).json({
+		success: false,
+		error: message || "Failed to unlock specification",
+	  });
+	}
 });
 
 /* ------------------------------------------------------------------

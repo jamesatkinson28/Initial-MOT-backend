@@ -702,7 +702,7 @@ router.get("/spec/unlocked", optionalAuth, async (req, res) => {
 });
 
 
-router.get("/spec/status", authRequired, async (req, res) => {
+router.get("/spec/status", optionalAuth, async (req, res) => {
   const vrm = req.query.vrm?.toUpperCase();
   if (!vrm) return res.status(400).json({ error: "VRM required" });
 

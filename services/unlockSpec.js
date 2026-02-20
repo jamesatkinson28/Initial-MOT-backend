@@ -53,6 +53,7 @@ export async function unlockSpec({
     platform,
   });
   let isPremium = false;
+  let isRetentionRetry = false;
   let activeEntitlement = null;
   
   if (!vrm) throw new Error("VRM required");
@@ -262,53 +263,91 @@ if (
   
   const providerStatus = await db.query(
   `
-  SELECT status_code, retry_after
+  SELECT status_code, retry_after, free_retry_used
   FROM vrm_provider_status
   WHERE vrm = $1
   `,
   [vrmUpper]
 );
 
-if (
-  providerStatus.rowCount > 0 &&
-  providerStatus.rows[0].retry_after &&
-  new Date(providerStatus.rows[0].retry_after) > new Date()
-) {
-  throw new Error(
-    "This registration is temporarily unavailable due to DVLA updates."
-  );
+if (providerStatus.rowCount > 0) {
+  const row = providerStatus.rows[0];
+
+  const now = new Date();
+  const retryAfter = row.retry_after ? new Date(row.retry_after) : null;
+
+  // ⛔ Still inside retention window
+  if (retryAfter && now < retryAfter) {
+    throw new Error("RETENTION_WAIT");
+  }
+
+  // ✅ Retry window passed
+  if (
+    row.status_code === "PlateInRetentionLastVehicleReturned" &&
+    retryAfter &&
+    now >= retryAfter
+  ) {
+    if (!row.free_retry_used) {
+      // Allow one free retry
+      await db.query(
+        `
+        UPDATE vrm_provider_status
+        SET free_retry_used = true
+        WHERE vrm = $1
+        `,
+        [vrmUpper]
+      );
+
+      isRetentionRetry = true;
+    }
+  }
 }
 
   // Fetch provider spec (only now)
   const result = await fetchSpecDataFromAPI(vrmUpper);
-  if (result?.statusCode === "PlateInRetentionLastVehicleReturned") {
-	    console.warn("🛑 PROVIDER RETENTION", {
+
+// 1) Null spec = refundable / no unlock
+if (!result?.spec) {
+  throw new Error("SPEC_NULL");
+}
+
+// 2) If DVLA/provider now returns Success, clear retention state
+if (result?.statusCode === "Success") {
+  await db.query(`DELETE FROM vrm_provider_status WHERE vrm = $1`, [vrmUpper]);
+}
+
+// 3) If still retention, store status + attach meta
+if (result?.statusCode === "PlateInRetentionLastVehicleReturned") {
+  console.warn("🛑 PROVIDER RETENTION", {
     vrm: vrmUpper,
     statusCode: result.statusCode,
   });
+
   await db.query(
     `
     INSERT INTO vrm_provider_status
-      (vrm, status_code, last_checked_at, retry_after)
-    VALUES ($1, $2, NOW(), $3)
+      (vrm, status_code, last_checked_at, retry_after, free_retry_used)
+    VALUES ($1, $2, NOW(), $3, false)
     ON CONFLICT (vrm)
     DO UPDATE SET
       status_code = EXCLUDED.status_code,
       last_checked_at = NOW(),
-      retry_after = EXCLUDED.retry_after
+      retry_after = EXCLUDED.retry_after,
+      free_retry_used = false
     `,
     [vrmUpper, result.statusCode, nextWeeklyRetryDate()]
   );
 
-  throw new Error(
-    "This registration is currently in retention. Please try again later."
-  );
+  result.spec = {
+    ...result.spec,
+    _meta: {
+      ...(result.spec._meta || {}),
+      retention: true,
+      retryAfter: nextWeeklyRetryDate().toISOString(),
+      provider_status_code: result.statusCode,
+    },
+  };
 }
-
-
-  if (!result?.spec) {
-    throw new Error("Failed to fetch spec for new vehicle");
-  }
 
   const engineCode =
     result.spec?.engine?.engine_code ?? null;
@@ -361,10 +400,11 @@ if (
   // --------------------------------------------------
 // RESERVE MONTHLY FREE UNLOCK (PREMIUM ONLY)
 // --------------------------------------------------
-if (unlockSource === "free") {
+if (unlockSource === "free" && !isRetentionRetry) {
   if (!isPremium) {
     throw new Error("Premium subscription required");
   }
+
 
   if (userUuid) {
     const res = await db.query(
@@ -400,6 +440,7 @@ if (unlockSource === "free") {
     }
   }
 }
+
 
 
   // --------------------------------------------------
