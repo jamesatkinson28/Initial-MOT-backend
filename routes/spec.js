@@ -96,6 +96,26 @@ console.log("🧬 VehicleCodes payload:", vCodes);
   console.log("POWERTRAIN KEYS:", Object.keys(powertrain));
   const ice = powertrain?.IceDetails || {};
   const transmission = powertrain?.Transmission || {};
+  
+  // -------------------------
+// IDENTITY FALLBACK LOGIC
+// -------------------------
+
+const dvlaModel = vId?.DvlaModel ?? null;
+const structuredModel = mId?.Model ?? null;
+const structuredRange = mId?.Range ?? null;
+
+// Prefer structured model, fallback to DVLA
+let finalModel = structuredModel || dvlaModel;
+
+// Clean duplication if DVLA model contains range name
+if (
+  structuredRange &&
+  dvlaModel &&
+  dvlaModel.toLowerCase().startsWith(structuredRange.toLowerCase())
+) {
+  finalModel = dvlaModel.substring(structuredRange.length).trim();
+}
 
   let clean = {
 	_meta: {
@@ -106,8 +126,8 @@ console.log("🧬 VehicleCodes payload:", vCodes);
 	identity: {
 	  vrm: vId.Vrm,
 	  make: mId.Make || vId.DvlaMake,
-	  range: mId.Range,
-	  model: mId.Model || vId.DvlaModel,
+	  range: structuredRange ?? null,
+	  model: finalModel ?? null,
 	  variant: mId.ModelVariant,
 	  generation: mId.Mark,
 	  series: mId.Series,
