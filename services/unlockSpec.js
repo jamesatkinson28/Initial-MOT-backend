@@ -369,9 +369,10 @@ if (unlockSource === "free") {
   if (userUuid) {
     const res = await db.query(
       `
-      UPDATE users
+      UPDATE premium_entitlements
       SET monthly_unlocks_used = monthly_unlocks_used + 1
-      WHERE uuid = $1
+      WHERE user_uuid = $1
+        AND premium_until > NOW()
         AND monthly_unlocks_used < 3
       RETURNING monthly_unlocks_used
       `,
