@@ -102,7 +102,10 @@ console.log("🧬 VehicleCodes payload:", vCodes);
 // -------------------------
 
 const dvlaModel = vId?.DvlaModel ?? null;
-const structuredModel = mId?.Model ?? null;
+const structuredModel =
+  mId?.Model && mId.Model.trim() !== ""
+    ? mId.Model
+    : null;
 const structuredRange = mId?.Range ?? null;
 
 // Prefer structured model, fallback to DVLA
