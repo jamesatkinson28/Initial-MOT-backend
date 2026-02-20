@@ -488,6 +488,11 @@ await db.query(
     entitlementPeriod,                             // ✅ NULL when paid
   ]
 );
-
+return {
+  alreadyUnlocked: false,
+  spec,
+  retention: !!spec?._meta?.retention,
+  retryAfter: spec?._meta?.retryAfter ?? null,
+};
 
 }
