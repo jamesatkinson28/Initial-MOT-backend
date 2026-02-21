@@ -137,7 +137,11 @@ unlockSource = derivedUnlockSource;
     };
   }
 }
-
+console.log("💳 CREDIT BLOCK CHECK", {
+  unlockSource,
+  transactionId,
+  productId,
+});
 // --------------------------------------------------
 // PAID CREDIT GRANT + BALANCE CHECK
 // --------------------------------------------------
