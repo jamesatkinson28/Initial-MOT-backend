@@ -707,7 +707,13 @@ router.get("/spec/unlocked", optionalAuth, async (req, res) => {
 
     const result = await query(
 	  `
-	  SELECT us.vrm, vss.spec_json, vss.engine_code, vss.tyre_data
+	  SELECT 
+	    us.vrm,
+	    us.unlocked_at,
+	   vss.created_at,
+	    vss.spec_json,
+	    vss.engine_code,
+	    vss.tyre_data
 	  FROM unlocked_specs us
 	  JOIN vehicle_spec_snapshots vss
 		ON vss.id = us.snapshot_id
