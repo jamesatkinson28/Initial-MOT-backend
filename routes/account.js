@@ -105,25 +105,38 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
         );
       }
 
+      // 🔓 Total unlocked
       const unlocksRes = await query(
-	    `
-	    SELECT COUNT(*)::int AS count
-	    FROM unlocked_specs
-	    WHERE user_id = $1
-	  	  AND revoked_at IS NULL
-	    `,
-	    [userUuid]
-	  );
+        `
+        SELECT COUNT(*)::int AS count
+        FROM unlocked_specs
+        WHERE user_id = $1
+          AND revoked_at IS NULL
+        `,
+        [userUuid]
+      );
 
       const vrmsRes = await query(
-	    `
-	    SELECT vrm
-	    FROM unlocked_specs
-	    WHERE user_id = $1
-		  AND revoked_at IS NULL
-	    `,
-	    [userUuid]
-	  );
+        `
+        SELECT vrm
+        FROM unlocked_specs
+        WHERE user_id = $1
+          AND revoked_at IS NULL
+        `,
+        [userUuid]
+      );
+
+      // 💳 Paid unlock credits
+      const creditRes = await query(
+        `
+        SELECT COALESCE(SUM(delta), 0)::int AS balance
+        FROM unlock_credits_ledger
+        WHERE user_uuid = $1
+        `,
+        [userUuid]
+      );
+
+      const paidCredits = creditRes.rows[0]?.balance ?? 0;
 
       return res.json({
         email: req.user.email,
@@ -132,6 +145,7 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
         monthly_unlocks_remaining: isPremium
           ? Math.max(3 - ent.monthly_unlocks_used, 0)
           : 0,
+        paid_unlock_credits: paidCredits, // ✅ NEW
         total_unlocked: unlocksRes.rows[0]?.count || 0,
         unlocked_vrms: vrmsRes.rows.map(r => r.vrm),
       });
@@ -140,75 +154,87 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
     // ==================================================
     // 2️⃣ GUEST
     // ==================================================
-	const guestId = req.guestId;
-	if (!guestId) {
-	  return res.status(401).json({ error: "Not authorised" });
-	}
+    const guestId = req.guestId;
+    if (!guestId) {
+      return res.status(401).json({ error: "Not authorised" });
+    }
 
-	// 1️⃣ Get entitlement (if exists)
-	const entRes = await query(
-	  `
-	  SELECT premium_until, monthly_unlocks_used, monthly_unlocks_reset_at
-	  FROM premium_entitlements
-	  WHERE guest_id = $1
-		AND status = 'active'
-	  LIMIT 1
-	  `,
-	  [guestId]
-	);
+    const entRes = await query(
+      `
+      SELECT premium_until, monthly_unlocks_used, monthly_unlocks_reset_at
+      FROM premium_entitlements
+      WHERE guest_id = $1
+        AND status = 'active'
+      LIMIT 1
+      `,
+      [guestId]
+    );
 
-	let premium = false;
-	let premiumUntil = null;
-	let monthlyUnlocksRemaining = 0;
+    let premium = false;
+    let premiumUntil = null;
+    let monthlyUnlocksRemaining = 0;
 
-	if (entRes.rowCount > 0) {
-	  const ent = entRes.rows[0];
+    if (entRes.rowCount > 0) {
+      const ent = entRes.rows[0];
 
-	  if (ent.premium_until > new Date()) {
-		premium = true;
-		premiumUntil = ent.premium_until;
+      if (ent.premium_until > new Date()) {
+        premium = true;
+        premiumUntil = ent.premium_until;
 
-		await maybeResetGuestMonthlyUnlocks(
-		  guestId,
-		  ent.premium_until,
-		  ent.monthly_unlocks_reset_at
-		);
+        await maybeResetGuestMonthlyUnlocks(
+          guestId,
+          ent.premium_until,
+          ent.monthly_unlocks_reset_at
+        );
 
-		monthlyUnlocksRemaining = Math.max(
-		  3 - ent.monthly_unlocks_used,
-		  0
-		);
-	  }
-	}
+        monthlyUnlocksRemaining = Math.max(
+          3 - ent.monthly_unlocks_used,
+          0
+        );
+      }
+    }
 
-	// 2️⃣ Always fetch unlocked specs
-	const unlocksRes = await query(
-	  `
-	  SELECT COUNT(*)::int AS count
-	  FROM unlocked_specs
-	  WHERE guest_id = $1
-		AND revoked_at IS NULL
-	  `,
-	  [guestId]
-	);
+    // 🔓 Total unlocked (guest)
+    const unlocksRes = await query(
+      `
+      SELECT COUNT(*)::int AS count
+      FROM unlocked_specs
+      WHERE guest_id = $1
+        AND revoked_at IS NULL
+      `,
+      [guestId]
+    );
 
-	const vrmsRes = await query(
-	  `
-	  SELECT vrm
-	  FROM unlocked_specs
-	  WHERE guest_id = $1
-		AND revoked_at IS NULL
-	  `,
-	  [guestId]
-	);
+    const vrmsRes = await query(
+      `
+      SELECT vrm
+      FROM unlocked_specs
+      WHERE guest_id = $1
+        AND revoked_at IS NULL
+      `,
+      [guestId]
+    );
 
-	return res.json({
-	  premium,
-	  premium_until: premiumUntil,
-	  monthly_unlocks_remaining: monthlyUnlocksRemaining,
-	  total_unlocked: unlocksRes.rows[0]?.count || 0,
-	  unlocked_vrms: vrmsRes.rows.map(r => r.vrm),
-	});
+    // 💳 Paid unlock credits (guest)
+    const creditRes = await query(
+      `
+      SELECT COALESCE(SUM(delta), 0)::int AS balance
+      FROM unlock_credits_ledger
+      WHERE guest_id = $1
+      `,
+      [guestId]
+    );
+
+    const paidCredits = creditRes.rows[0]?.balance ?? 0;
+
+    return res.json({
+      premium,
+      premium_until: premiumUntil,
+      monthly_unlocks_remaining: monthlyUnlocksRemaining,
+      paid_unlock_credits: paidCredits, // ✅ NEW
+      total_unlocked: unlocksRes.rows[0]?.count || 0,
+      unlocked_vrms: vrmsRes.rows.map(r => r.vrm),
+    });
 
   } catch (err) {
     console.error("[Account] overview error:", err);
