@@ -729,9 +729,10 @@ router.get("/spec/unlocked", optionalAuth, async (req, res) => {
 	  [userId, guestId]
 	);
 
-    return res.json(
+	return res.json(
 	  result.rows.map(row => ({
 		reg: row.vrm,
+		unlockedAt: row.unlocked_at,
 		spec: {
 		  ...row.spec_json,
 		  engineCode: row.engine_code,
