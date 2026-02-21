@@ -1,7 +1,7 @@
 import { buildFingerprint } from "../routes/spec.js";
 import { fetchSpecDataFromAPI } from "./specProvider.js";
 import { fetchTyreDetails } from "./tyreParser.js";
-
+import crypto from "crypto";
 
 const DVLA_CACHE_TTL_HOURS = 24;
 
@@ -30,7 +30,42 @@ function buildCoreIdentityFromDvla(dvla) {
   };
 }
 
+async function getPaidCreditBalance(db, userUuid, guestId) {
+  const res = await db.query(
+    `
+    SELECT COALESCE(SUM(delta), 0)::int AS balance
+    FROM unlock_credits_ledger
+    WHERE (user_uuid = $1 OR ($1 IS NULL AND guest_id = $2))
+    `,
+    [userUuid, guestId]
+  );
+  return res.rows[0]?.balance ?? 0;
+}
 
+async function grantPaidCreditIdempotent(db, {
+  userUuid,
+  guestId,
+  transactionId,
+  platform,
+  productId
+}) {
+  // +1 only once per purchase transaction
+  await db.query(
+    `
+    INSERT INTO unlock_credits_ledger
+      (user_uuid, guest_id, transaction_id, platform, product_id, delta, reason)
+    VALUES ($1, $2, $3, $4, $5, 1, 'iap_purchase')
+    ON CONFLICT DO NOTHING
+    `,
+    [
+      userUuid,
+      userUuid ? null : guestId,
+      String(transactionId),
+      platform,
+      productId
+    ]
+  );
+}
 
 /**
  * MAIN UNLOCK FUNCTION
@@ -72,7 +107,7 @@ unlockSource = derivedUnlockSource;
   
   const vrmUpper = vrm.toUpperCase();
   const userUuid = user ? user.id : null;
-  
+
   // --------------------------------------------------
 // TRANSACTION ID DEDUPE (AUTHORITATIVE)
 // --------------------------------------------------
@@ -103,7 +138,29 @@ unlockSource = derivedUnlockSource;
   }
 }
 
+// --------------------------------------------------
+// PAID CREDIT GRANT + BALANCE CHECK
+// --------------------------------------------------
+if (unlockSource === "paid") {
+  if (!transactionId || !productId) {
+    throw new Error("Missing transactionId/productId for paid unlock");
+  }
 
+  // 1) grant +1 credit for this purchase transaction (idempotent)
+  await grantPaidCreditIdempotent(db, {
+    userUuid,
+    guestId,
+    transactionId,
+    platform,
+    productId,
+  });
+
+  // 2) require at least 1 available credit
+  const bal = await getPaidCreditBalance(db, userUuid, guestId);
+  if (bal <= 0) {
+    throw new Error("NO_UNLOCK_CREDIT");
+  }
+}
 
   // --------------------------------------------------
   // LOCK USER ROW (monthly unlock tracking)
@@ -515,6 +572,29 @@ await db.query(
     entitlementPeriod,                             // ✅ NULL when paid
   ]
 );
+// --------------------------------------------------
+// PAID CREDIT CONSUME (ONLY AFTER SUCCESSFUL UNLOCK)
+// --------------------------------------------------
+if (unlockSource === "paid") {
+  const usageId = crypto.randomUUID();
+
+  await db.query(
+    `
+    INSERT INTO unlock_credits_ledger
+      (user_uuid, guest_id, transaction_id, platform, product_id, vrm, usage_id, delta, reason)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,-1,'consume_on_unlock')
+    `,
+    [
+      userUuid,
+      userUuid ? null : guestId,
+      null,
+      platform,
+      productId,
+      vrmUpper,
+      usageId,
+    ]
+  );
+}
 return {
   alreadyUnlocked: false,
   spec,

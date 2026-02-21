@@ -51,14 +51,15 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
 		});
 	  }
 
-	  // 💰 Provider returned no spec (eligible for refund if paid)
+	  // 💰 Provider returned no spec (eligible for make-good credit if paid)
 	  if (message === "SPEC_NULL") {
-		return res.status(422).json({
-		  success: false,
-		  refund: true,
+	    return res.status(422).json({
+	  	  success: false,
+		  refund: true,          // optional: keep for UI
+		  creditKept: true,      // ✅ important
 		  message:
-			"No specification data was returned for this registration."
-		});
+		    "No specification data was returned for this registration. You won’t lose this unlock — you can use it on another vehicle.",
+	    });
 	  }
 
 	  // 🔒 Premium required
@@ -83,6 +84,13 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
 		  retention: true,
 		  paidRequired: true,
 		  message: "Your free retry has been used. Please use a paid unlock to retry this registration."
+	    });
+	  }
+	  
+	  if (message === "NO_UNLOCK_CREDIT") {
+	    return res.status(402).json({
+		  success: false,
+		  message: "No unlock credit available for this purchase.",
 	    });
 	  }
 
