@@ -663,6 +663,7 @@ router.get("/spec", optionalAuth, async (req, res) => {
       JOIN vehicle_spec_snapshots vss
         ON vss.id = us.snapshot_id
       WHERE us.vrm = $1
+	    AND us.revoked_at IS NULL
         AND vss.fingerprint = $2
         AND (
           ($3::uuid IS NOT NULL AND us.user_id = $3)
