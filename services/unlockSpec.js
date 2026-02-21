@@ -42,30 +42,6 @@ async function getPaidCreditBalance(db, userUuid, guestId) {
   return res.rows[0]?.balance ?? 0;
 }
 
-async function grantPaidCreditIdempotent(db, {
-  userUuid,
-  guestId,
-  transactionId,
-  platform,
-  productId
-}) {
-  // +1 only once per purchase transaction
-  await db.query(
-    `
-    INSERT INTO unlock_credits_ledger
-      (user_uuid, guest_id, transaction_id, platform, product_id, delta, reason)
-    VALUES ($1, $2, $3, $4, $5, 1, 'iap_purchase')
-    ON CONFLICT DO NOTHING
-    `,
-    [
-      userUuid,
-      userUuid ? null : guestId,
-      String(transactionId),
-      platform,
-      productId
-    ]
-  );
-}
 
 /**
  * MAIN UNLOCK FUNCTION
@@ -96,14 +72,9 @@ export async function unlockSpec({
     throw new Error("No user or guest identity provided");
   }
   
-  const derivedUnlockSource =
-  transactionId && productId
-    ? "paid"
-    : "free";
-
-unlockSource = derivedUnlockSource;
-  
-
+unlockSource =
+  unlockSource ??
+  (transactionId && productId ? "paid" : "free");
   
   const vrmUpper = vrm.toUpperCase();
   const userUuid = user ? user.id : null;
@@ -146,20 +117,6 @@ console.log("💳 CREDIT BLOCK CHECK", {
 // PAID CREDIT GRANT + BALANCE CHECK
 // --------------------------------------------------
 if (unlockSource === "paid") {
-  if (!transactionId || !productId) {
-    throw new Error("Missing transactionId/productId for paid unlock");
-  }
-
-  // 1) grant +1 credit for this purchase transaction (idempotent)
-  await grantPaidCreditIdempotent(db, {
-    userUuid,
-    guestId,
-    transactionId,
-    platform,
-    productId,
-  });
-
-  // 2) require at least 1 available credit
   const bal = await getPaidCreditBalance(db, userUuid, guestId);
   if (bal <= 0) {
     throw new Error("NO_UNLOCK_CREDIT");
@@ -544,7 +501,11 @@ const entitlementPeriod =
     ? activeEntitlement?.latest_transaction_id
     : null;
 
-await db.query(
+// --------------------------------------------------
+// LINK USER → SNAPSHOT
+// --------------------------------------------------
+
+const unlockInsert = await db.query(
   `
   INSERT INTO unlocked_specs (
     user_id,
@@ -561,32 +522,34 @@ await db.query(
   )
   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
   ON CONFLICT DO NOTHING
+  RETURNING id
   `,
   [
     userUuid,
     user ? null : guestId,
     vrmUpper,
     snapshotId,
-    unlockSource,                                  // paid | free
+    unlockSource,
     unlockSource === "paid" ? "iap" : "subscription",
     unlockSource === "paid" ? transactionId : null,
     productId,
     platform,
-    entitlementOriginal,                           // ✅ NULL when paid
-    entitlementPeriod,                             // ✅ NULL when paid
+    entitlementOriginal,
+    entitlementPeriod,
   ]
 );
-// --------------------------------------------------
-// PAID CREDIT CONSUME (ONLY AFTER SUCCESSFUL UNLOCK)
-// --------------------------------------------------
-if (unlockSource === "paid") {
-  const usageId = crypto.randomUUID();
 
+const didInsertUnlock = unlockInsert.rowCount > 0;
+
+// --------------------------------------------------
+// PAID CREDIT CONSUME (ONLY IF ROW INSERTED)
+// --------------------------------------------------
+if (unlockSource === "paid" && didInsertUnlock) {
   await db.query(
     `
     INSERT INTO unlock_credits_ledger
-      (user_uuid, guest_id, transaction_id, platform, product_id, vrm, usage_id, delta, reason)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,-1,'consume_on_unlock')
+      (user_uuid, guest_id, transaction_id, platform, product_id, delta, reason)
+    VALUES ($1,$2,$3,$4,$5,-1,'consume_on_unlock')
     `,
     [
       userUuid,
@@ -594,8 +557,6 @@ if (unlockSource === "paid") {
       null,
       platform,
       productId,
-      vrmUpper,
-      usageId,
     ]
   );
 }

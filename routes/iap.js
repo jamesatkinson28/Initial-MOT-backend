@@ -20,6 +20,26 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
       platform,
       hasUser: !!req.user,
     });
+	
+	 if (transactionId && productId) {
+      await query(
+        `
+        INSERT INTO unlock_credits_ledger
+          (user_uuid, guest_id, transaction_id, platform, product_id, delta, reason)
+        VALUES ($1,$2,$3,$4,$5,1,'iap_purchase')
+        ON CONFLICT DO NOTHING
+        `,
+        [
+          req.user?.id ?? null,
+          req.user ? null : (guestId ?? null),
+          String(transactionId),
+          platform ?? null,
+          productId,
+        ]
+      );
+
+      console.log("💳 IAP credit granted (if not already)");
+    }
 
     const result = await withTransaction(async (db) => {
       return unlockSpec({
@@ -30,7 +50,7 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
         transactionId: transactionId ?? null,
         productId: productId ?? null,
         platform: platform ?? null,
-		unlockSource: unlockSource ?? (transactionId ? "paid" : "free"),
+		unlockSource: null,
       });
     });
 
