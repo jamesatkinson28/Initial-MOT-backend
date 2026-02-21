@@ -76,6 +76,15 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
 		  message: "Monthly free unlock limit reached"
 		});
 	  }
+	  
+	  if (message === "RETENTION_PAID_REQUIRED") {
+	    return res.status(402).json({
+		  success: false,
+		  retention: true,
+		  paidRequired: true,
+		  message: "Your free retry has been used. Please use a paid unlock to retry this registration."
+	    });
+	  }
 
 	  return res.status(500).json({
 		success: false,
