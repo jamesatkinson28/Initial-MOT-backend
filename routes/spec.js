@@ -604,35 +604,74 @@ async function fetchSpecDataFromAPI(vrm) {
 router.get("/spec", optionalAuth, async (req, res) => {
   try {
     const vrm = req.query.vrm?.toUpperCase();
-
     if (!vrm) {
       return res.status(400).json({ error: "VRM required" });
     }
 
     const userId = req.user?.id ?? null;
     const guestId =
-	  req.guestId ??
-	  req.query.guestId ??
-	  null;
+      req.guestId ??
+      req.query.guestId ??
+      null;
 
     if (!userId && !guestId) {
       return res.status(401).json({ error: "Not authorised" });
     }
 
+    // --------------------------------------------------
+    // 1️⃣ Load DVLA core identity from cache
+    // --------------------------------------------------
+
+    const dvlaRow = await query(
+      `
+      SELECT dvla_json
+      FROM dvla_lookup_cache
+      WHERE vrm = $1
+      `,
+      [vrm]
+    );
+
+    if (dvlaRow.rowCount === 0) {
+      return res.status(400).json({ error: "DVLA data not found" });
+    }
+
+    const dvla = dvlaRow.rows[0].dvla_json;
+
+    const coreIdentity = {
+      identity: {
+        make: dvla.make ?? null,
+        monthOfFirstRegistration: dvla.monthOfFirstRegistration ?? null,
+        engineCapacity:
+          dvla.engineCapacity !== undefined
+            ? Number(dvla.engineCapacity)
+            : null,
+        fuelType: dvla.fuelType ?? null,
+        bodyStyle: dvla.wheelplan ?? null,
+      },
+    };
+
+    const currentFingerprint = buildFingerprint(coreIdentity);
+
+    // --------------------------------------------------
+    // 2️⃣ Fetch unlocked snapshot matching fingerprint
+    // --------------------------------------------------
+
     const result = await query(
       `
       SELECT vss.spec_json, vss.engine_code, vss.tyre_data
       FROM unlocked_specs us
-      JOIN vehicle_spec_snapshots vss ON vss.id = us.snapshot_id
+      JOIN vehicle_spec_snapshots vss
+        ON vss.id = us.snapshot_id
       WHERE us.vrm = $1
+        AND vss.fingerprint = $2
         AND (
-          ($2::uuid IS NOT NULL AND us.user_id = $2)
+          ($3::uuid IS NOT NULL AND us.user_id = $3)
           OR
-          ($3::text IS NOT NULL AND us.guest_id = $3)
+          ($4::text IS NOT NULL AND us.guest_id = $4)
         )
       LIMIT 1
       `,
-      [vrm, userId, guestId]
+      [vrm, currentFingerprint, userId, guestId]
     );
 
     if (result.rowCount === 0) {
@@ -640,10 +679,11 @@ router.get("/spec", optionalAuth, async (req, res) => {
     }
 
     return res.json({
-	  ...result.rows[0].spec_json,
-	  engineCode: result.rows[0].engine_code,
-	  tyres: result.rows[0].tyre_data,
-	});
+      ...result.rows[0].spec_json,
+      engineCode: result.rows[0].engine_code,
+      tyres: result.rows[0].tyre_data,
+    });
+
   } catch (err) {
     console.error("❌ FETCH SPEC ERROR:", err);
     return res.status(500).json({ error: "Failed to fetch spec" });
