@@ -139,44 +139,7 @@ unlockSource = derivedUnlockSource;
     throw new Error("Premium subscription required");
   
   }
-// --------------------------------------------------
-// ALREADY UNLOCKED BY OWNER (MATCHING FINGERPRINT ONLY)
-// --------------------------------------------------
 
-const existing = userUuid
-  ? await db.query(`
-      SELECT us.snapshot_id
-      FROM unlocked_specs us
-      JOIN vehicle_spec_snapshots vss
-        ON vss.id = us.snapshot_id
-      WHERE us.user_id = $1
-        AND us.vrm = $2
-        AND vss.fingerprint = $3
-      LIMIT 1
-    `,[userUuid, vrmUpper, currentFingerprint])
-  : await db.query(`
-      SELECT us.snapshot_id
-      FROM unlocked_specs us
-      JOIN vehicle_spec_snapshots vss
-        ON vss.id = us.snapshot_id
-      WHERE us.guest_id = $1
-        AND us.vrm = $2
-        AND vss.fingerprint = $3
-      LIMIT 1
-    `,[guestId, vrmUpper, currentFingerprint]);
-
-if (existing.rowCount > 0) {
-  const snap = await db.query(`
-      SELECT spec_json
-      FROM vehicle_spec_snapshots
-      WHERE id=$1
-    `,[existing.rows[0].snapshot_id]);
-
-  return {
-    alreadyUnlocked: true,
-    spec: snap.rows[0]?.spec_json || null,
-  };
-}
   // --------------------------------------------------
   // BUILD CURRENT FINGERPRINT FROM DVLA CORE IDENTITY
   // --------------------------------------------------
@@ -216,7 +179,44 @@ if (existing.rowCount > 0) {
     throw new Error("Fingerprint generation failed");
   }
 
-  
+// --------------------------------------------------
+// ALREADY UNLOCKED BY OWNER (MATCHING FINGERPRINT ONLY)
+// --------------------------------------------------
+
+const existing = userUuid
+  ? await db.query(`
+      SELECT us.snapshot_id
+      FROM unlocked_specs us
+      JOIN vehicle_spec_snapshots vss
+        ON vss.id = us.snapshot_id
+      WHERE us.user_id = $1
+        AND us.vrm = $2
+        AND vss.fingerprint = $3
+      LIMIT 1
+    `,[userUuid, vrmUpper, currentFingerprint])
+  : await db.query(`
+      SELECT us.snapshot_id
+      FROM unlocked_specs us
+      JOIN vehicle_spec_snapshots vss
+        ON vss.id = us.snapshot_id
+      WHERE us.guest_id = $1
+        AND us.vrm = $2
+        AND vss.fingerprint = $3
+      LIMIT 1
+    `,[guestId, vrmUpper, currentFingerprint]);
+
+if (existing.rowCount > 0) {
+  const snap = await db.query(`
+      SELECT spec_json
+      FROM vehicle_spec_snapshots
+      WHERE id=$1
+    `,[existing.rows[0].snapshot_id]);
+
+  return {
+    alreadyUnlocked: true,
+    spec: snap.rows[0]?.spec_json || null,
+  };
+}
   // --------------------------------------------------
 // CHECK FOR EXISTING SNAPSHOT
 // --------------------------------------------------
