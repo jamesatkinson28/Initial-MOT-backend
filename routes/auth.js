@@ -220,6 +220,30 @@ router.post("/login", async (req, res) => {
 		rowsAffected: unlockMerge.rowCount,
 	  });
 	}
+	
+	// ─────────────────────────────────────────────
+	// 🔁 GUEST → USER CREDIT LEDGER MERGE (IMPORTANT)
+	// ─────────────────────────────────────────────
+	if (guestId) {
+	  const creditMerge = await query(
+		`
+		UPDATE unlock_credits_ledger
+		SET
+		  user_uuid = $1,
+		  guest_id = NULL
+		WHERE
+		  guest_id = $2
+		  AND user_uuid IS NULL
+		`,
+		[user.uuid, guestId]
+	  );
+
+	  console.log("🔁 LOGIN MERGE CREDIT LEDGER", {
+		userUuid: user.uuid,
+		guestId,
+		rowsAffected: creditMerge.rowCount,
+	  });
+	}
 
 
     // ─────────────────────────────────────────────
