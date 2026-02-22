@@ -5,71 +5,79 @@ import { query } from "../db/db.js";
 
 const router = express.Router();
 
+
+function daysInMonth(year, monthIndex0) {
+  // monthIndex0: 0-11
+  return new Date(year, monthIndex0 + 1, 0).getDate();
+}
+
+function clampDayToMonth(year, monthIndex0, anchorDay) {
+  return Math.min(anchorDay, daysInMonth(year, monthIndex0));
+}
+
 /**
- * Reset monthly unlocks if a new billing cycle has started
+ * Compute the reset moment for THIS month based on anchorDay.
+ * Example: anchorDay=31 in Feb -> Feb 28/29
  */
-async function maybeResetMonthlyUnlocks(userId, premiumSince, lastReset) {
-  if (!premiumSince) return;
-
-  const now = new Date();
-  const start = new Date(premiumSince);
-
-  // Reset day = same day of month as subscription start
-  const resetDateThisMonth = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    start.getDate()
-  );
-
-  const lastResetDate = lastReset ? new Date(lastReset) : null;
-
-  // Reset only once per cycle
-  if (
-    now >= resetDateThisMonth &&
-    (!lastResetDate || lastResetDate < resetDateThisMonth)
-  ) {
-    await query(
-      `
-      UPDATE users
-      SET monthly_unlocks_used = 0,
-          monthly_unlocks_reset_at = NOW()
-      WHERE uuid = $1
-      `,
-      [userId]
-    );
-  }
+function resetDateForMonth(now, anchorDay) {
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const d = clampDayToMonth(y, m, anchorDay);
+  return new Date(y, m, d, 0, 0, 0, 0); // midnight local server time
 }
 
 
-async function maybeResetGuestMonthlyUnlocks(guestId, premiumUntil, lastReset) {
-  if (!premiumUntil) return;
+/**
+ * Reset monthly unlocks if a new billing cycle has started
+ */
+async function maybeResetMonthlyUnlocks(userUuid, anchorDay, lastResetAt) {
+  if (!anchorDay) return;
 
   const now = new Date();
-  const start = new Date(premiumUntil);
-  const resetDateThisMonth = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    start.getDate()
-  );
+  const resetThisMonth = resetDateForMonth(now, anchorDay);
+  const last = lastResetAt ? new Date(lastResetAt) : new Date(0);
 
-  const lastResetDate = lastReset ? new Date(lastReset) : null;
+  // If we're past the reset date and we haven't reset since that date → reset
+  if (now >= resetThisMonth && (!last || last < resetThisMonth)) {
+    await query(
+      `
+      UPDATE premium_entitlements
+      SET monthly_unlocks_used = 0,
+          monthly_unlocks_reset_at = NOW()
+      WHERE user_uuid = $1
+        AND status = 'active'
+        AND premium_until > NOW()
+      `,
+      [userUuid]
+    );
 
-  if (
-    now >= resetDateThisMonth &&
-    (!lastResetDate || lastResetDate < resetDateThisMonth)
-  ) {
+    console.log("🔄 Monthly unlocks reset (user)", { userUuid, anchorDay });
+  }
+}
+
+async function maybeResetGuestMonthlyUnlocks(guestId, anchorDay, lastResetAt) {
+  if (!anchorDay) return;
+
+  const now = new Date();
+  const resetThisMonth = resetDateForMonth(now, anchorDay);
+  const last = lastResetAt ? new Date(lastResetAt) : new Date(0);
+
+  if (now >= resetThisMonth && (!last || last < resetThisMonth)) {
     await query(
       `
       UPDATE premium_entitlements
       SET monthly_unlocks_used = 0,
           monthly_unlocks_reset_at = NOW()
       WHERE guest_id = $1
+        AND status = 'active'
+        AND premium_until > NOW()
       `,
       [guestId]
     );
+
+    console.log("🔄 Monthly unlocks reset (guest)", { guestId, anchorDay });
   }
 }
-
 /**
  * GET /api/account/overview
  * Returns: email, premium, premium_until, monthly_unlocks_remaining, total_unlocked
@@ -84,7 +92,7 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
 
       const entRes = await query(
         `
-        SELECT premium_until, monthly_unlocks_used, monthly_unlocks_reset_at
+        SELECT premium_until, monthly_unlocks_used, monthly_unlocks_reset_at, created_at
         FROM premium_entitlements
         WHERE user_uuid = $1
           AND status = 'active'
@@ -97,13 +105,17 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
       const isPremium = entRes.rowCount > 0;
       const ent = entRes.rows[0] ?? null;
 
-      if (isPremium) {
-        await maybeResetMonthlyUnlocks(
-          userUuid,
-          ent.premium_until,
-          ent.monthly_unlocks_reset_at
-        );
-      }
+      if (isPremium && ent) {
+	    const anchorDay = ent.created_at
+		  ? new Date(ent.created_at).getDate()
+		  : null;
+
+	    await maybeResetMonthlyUnlocks(
+		  userUuid,
+		  anchorDay,
+		  ent.monthly_unlocks_reset_at
+	    );
+	  }
 
       // 🔓 Total unlocked
       const unlocksRes = await query(
@@ -161,7 +173,7 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
 
     const entRes = await query(
       `
-      SELECT premium_until, monthly_unlocks_used, monthly_unlocks_reset_at
+      SELECT premium_until, monthly_unlocks_used, monthly_unlocks_reset_at, created_at
       FROM premium_entitlements
       WHERE guest_id = $1
         AND status = 'active'
@@ -181,11 +193,15 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
         premium = true;
         premiumUntil = ent.premium_until;
 
-        await maybeResetGuestMonthlyUnlocks(
-          guestId,
-          ent.premium_until,
-          ent.monthly_unlocks_reset_at
-        );
+        const anchorDay = ent.created_at
+		  ? new Date(ent.created_at).getDate()
+		  : null;
+
+		await maybeResetGuestMonthlyUnlocks(
+		  guestId,
+		  anchorDay,
+		  ent.monthly_unlocks_reset_at
+		);
 
         monthlyUnlocksRemaining = Math.max(
           3 - ent.monthly_unlocks_used,

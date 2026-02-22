@@ -213,12 +213,6 @@ router.post("/login", async (req, res) => {
 		`,
 		[user.uuid, guestId]
 	  );
-
-	  console.log("🔁 LOGIN MERGE UNLOCKED SPECS", {
-		userUuid: user.uuid,
-		guestId,
-		rowsAffected: unlockMerge.rowCount,
-	  });
 	}
 	
 	// ─────────────────────────────────────────────
@@ -237,12 +231,6 @@ router.post("/login", async (req, res) => {
 		`,
 		[user.uuid, guestId]
 	  );
-
-	  console.log("🔁 LOGIN MERGE CREDIT LEDGER", {
-		userUuid: user.uuid,
-		guestId,
-		rowsAffected: creditMerge.rowCount,
-	  });
 	}
 
 
