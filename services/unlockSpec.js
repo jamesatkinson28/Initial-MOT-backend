@@ -72,9 +72,9 @@ export async function unlockSpec({
     throw new Error("No user or guest identity provided");
   }
   
-unlockSource =
-  unlockSource ??
-  (transactionId && productId ? "paid" : "free");
+if (!unlockSource) {
+  throw new Error("UNLOCK_SOURCE_REQUIRED");
+}
   
   const vrmUpper = vrm.toUpperCase();
   const userUuid = user ? user.id : null;

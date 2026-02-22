@@ -8,9 +8,40 @@ const router = express.Router();
 /* ------------------------------------------------------------------
    SPEC UNLOCK (unchanged)
 ------------------------------------------------------------------- */
+// iap.js
 router.post("/spec-unlock", optionalAuth, async (req, res) => {
   try {
-    const { vrm, guestId, transactionId, productId, platform, unlockSource } = req.body;
+    console.log("📦 RAW BODY", req.body);
+
+    const {
+      vrm,
+      guestId,
+      transactionId,
+      productId,
+      platform,
+      unlockSource, // "free" | "paid"
+    } = req.body;
+
+    console.log("📦 EXTRACTED", {
+      vrm,
+      guestId,
+      transactionId,
+      productId,
+      platform,
+      unlockSource,
+    });
+
+    if (!vrm) {
+      return res.status(400).json({ success: false, error: "VRM required" });
+    }
+
+    // ✅ REQUIRE unlockSource (prevents accidental "free")
+    if (!unlockSource || (unlockSource !== "free" && unlockSource !== "paid")) {
+      return res.status(400).json({
+        success: false,
+        error: "unlockSource is required (free | paid)",
+      });
+    }
 
     console.log("📦 /spec-unlock payload", {
       vrm,
@@ -18,10 +49,12 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
       transactionId,
       productId,
       platform,
+      unlockSource,
       hasUser: !!req.user,
     });
-	
-	 if (transactionId && productId) {
+
+    // ✅ Only grant +1 credit when there is an actual store purchase transaction
+    if (transactionId && productId) {
       await query(
         `
         INSERT INTO unlock_credits_ledger
@@ -50,75 +83,79 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
         transactionId: transactionId ?? null,
         productId: productId ?? null,
         platform: platform ?? null,
-		unlockSource: null,
+        // ✅ THIS IS THE FIX (stop passing null)
+        unlockSource,
       });
     });
 
     return res.json({ success: true, ...result });
   } catch (err) {
-	  console.error("❌ IAP SPEC UNLOCK ERROR:", err);
+    console.error("❌ IAP SPEC UNLOCK ERROR:", err);
+    const message = err?.message || "";
 
-	  const message = err?.message || "";
+    if (message === "RETENTION_WAIT") {
+      return res.status(409).json({
+        success: false,
+        retention: true,
+        retryAfterDays: 7,
+        message:
+          "This registration is currently awaiting DVLA update. Please retry after the next weekly update.",
+      });
+    }
 
-	  // ⛔ Still inside retention window
-	  if (message === "RETENTION_WAIT") {
-		return res.status(409).json({
-		  success: false,
-		  retention: true,
-		  retryAfterDays: 7,
-		  message:
-			"This registration is currently awaiting DVLA update. Please retry after the next weekly update."
-		});
-	  }
+    if (message === "SPEC_NULL") {
+      return res.status(422).json({
+        success: false,
+        refund: true,
+        creditKept: true,
+        message:
+          "No specification data was returned for this registration. You won’t lose this unlock — you can use it on another vehicle.",
+      });
+    }
 
-	  // 💰 Provider returned no spec (eligible for make-good credit if paid)
-	  if (message === "SPEC_NULL") {
-	    return res.status(422).json({
-	  	  success: false,
-		  refund: true,          // optional: keep for UI
-		  creditKept: true,      // ✅ important
-		  message:
-		    "No specification data was returned for this registration. You won’t lose this unlock — you can use it on another vehicle.",
-	    });
-	  }
+    if (message === "Premium subscription required") {
+      return res.status(403).json({
+        success: false,
+        message: "Premium subscription required",
+      });
+    }
 
-	  // 🔒 Premium required
-	  if (message === "Premium subscription required") {
-		return res.status(403).json({
-		  success: false,
-		  message: "Premium subscription required"
-		});
-	  }
+    if (message === "Monthly free unlock limit reached") {
+      return res.status(403).json({
+        success: false,
+        message: "Monthly free unlock limit reached",
+      });
+    }
 
-	  // 📉 Monthly free limit hit
-	  if (message === "Monthly free unlock limit reached") {
-		return res.status(403).json({
-		  success: false,
-		  message: "Monthly free unlock limit reached"
-		});
-	  }
-	  
-	  if (message === "RETENTION_PAID_REQUIRED") {
-	    return res.status(402).json({
-		  success: false,
-		  retention: true,
-		  paidRequired: true,
-		  message: "Your free retry has been used. Please use a paid unlock to retry this registration."
-	    });
-	  }
-	  
-	  if (message === "NO_UNLOCK_CREDIT") {
-	    return res.status(402).json({
-		  success: false,
-		  message: "No unlock credit available for this purchase.",
-	    });
-	  }
+    if (message === "RETENTION_PAID_REQUIRED") {
+      return res.status(402).json({
+        success: false,
+        retention: true,
+        paidRequired: true,
+        message:
+          "Your free retry has been used. Please use a paid unlock to retry this registration.",
+      });
+    }
 
-	  return res.status(500).json({
-		success: false,
-		error: message || "Failed to unlock specification",
-	  });
-	}
+    if (message === "NO_UNLOCK_CREDIT") {
+      return res.status(402).json({
+        success: false,
+        message: "No unlock credit available.",
+      });
+    }
+
+    if (message === "UNLOCK_SOURCE_REQUIRED") {
+      return res.status(400).json({
+        success: false,
+        message: "unlockSource is required",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: message || "Failed to unlock specification",
+    });
+  }
 });
 
 /* ------------------------------------------------------------------
