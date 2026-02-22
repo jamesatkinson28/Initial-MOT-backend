@@ -544,6 +544,10 @@ const didInsertUnlock = unlockInsert.rowCount > 0;
 // --------------------------------------------------
 // PAID CREDIT CONSUME (ONLY IF ROW INSERTED)
 // --------------------------------------------------
+console.log("💥 CONSUME CHECK", {
+  unlockSource,
+  didInsertUnlock
+});
 if (unlockSource === "paid" && didInsertUnlock) {
   await db.query(
     `
