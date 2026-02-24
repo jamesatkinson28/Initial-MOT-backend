@@ -44,7 +44,7 @@ export function buildCleanSpec(apiResults) {
   const safety = model.Safety || {};
 
   const powertrain = model.Powertrain || {};
-  console.log("POWERTRAIN KEYS:", Object.keys(powertrain));
+
   const ice = powertrain?.IceDetails || {};
   const transmission = powertrain?.Transmission || {};
 

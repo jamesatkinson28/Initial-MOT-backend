@@ -17,13 +17,6 @@ router.post("/mot-insight/explain", optionalAuth, async (req, res) => {
     const vehicleAgeYears = vehicle?.ageYears;
     const latestMileage = vehicle?.mileage;
 
-    console.log("MOT AI payload:", {
-      vehicleLabel,
-      vehicleAgeYears,
-      latestMileage,
-      categoryId,
-      categoryLabel,
-    });
 
     if (!categoryId || !categoryLabel) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -83,13 +76,7 @@ Return JSON ONLY in this exact format:
 		  usage.completion_tokens * PRICING.outPer1M) /
 		1_000_000;
 
-	console.log("MOT_AI_USAGE", {
-      model: "gpt-4.1-mini",
-      prompt: usage.prompt_tokens,
-      completion: usage.completion_tokens,
-      total: usage.total_tokens,
-      estCostUsd: Number(estCost.toFixed(8)),
-	});
+
   }
 
     const text = completion.choices?.[0]?.message?.content || "{}";
@@ -104,7 +91,6 @@ Return JSON ONLY in this exact format:
     });
 
   } catch (e) {
-    console.log("mot-insight/explain error", e);
     return res.status(500).json({ error: "AI failed" });
   }
 });

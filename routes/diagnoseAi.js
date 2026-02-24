@@ -54,7 +54,6 @@ const router = express.Router();
 router.post(
   "/diagnose/analyse",
   (req, res, next) => {
-    console.log("🔥 HIT diagnose/analyse");
     next();
   },
   optionalAuth,
@@ -264,10 +263,7 @@ FINAL REMINDERS
 `.trim();
 
 
-console.log(
-  "DIAGNOSE PROMPT PREVIEW",
-  prompt.split("\n").slice(0, 25).join("\n")
-);
+
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
@@ -283,18 +279,10 @@ console.log(
         (usage.prompt_tokens * PRICING.inPer1M +
           usage.completion_tokens * PRICING.outPer1M) /
         1_000_000;
-
-      console.log("DIAGNOSE_AI_USAGE", {
-        model: "gpt-4.1-mini",
-        prompt: usage.prompt_tokens,
-        completion: usage.completion_tokens,
-        total: usage.total_tokens,
-        estCostUsd: Number(estCost.toFixed(8)),
-      });
     }
 
       const text = completion.choices?.[0]?.message?.content || "{}";
-		console.log("DIAGNOSE AI RESPONSE", text);
+
 
 		let data;
 		try {
@@ -315,12 +303,6 @@ console.log(
 		if (urgencyReason) {
 		  data.urgency_reason = urgencyReason;
 		}
-
-
-		console.log("FINAL URGENCY", {
-		  ai: data.urgency,
-		  enforcedByWarningLights: minUrgency || "none",
-		});
 
 
 		// ✅ HARD GUARANTEES — frontend can trust this shape

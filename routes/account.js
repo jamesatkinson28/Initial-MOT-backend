@@ -51,7 +51,6 @@ async function maybeResetMonthlyUnlocks(userUuid, anchorDay, lastResetAt) {
       [userUuid]
     );
 
-    console.log("🔄 Monthly unlocks reset (user)", { userUuid, anchorDay });
   }
 }
 
@@ -75,7 +74,6 @@ async function maybeResetGuestMonthlyUnlocks(guestId, anchorDay, lastResetAt) {
       [guestId]
     );
 
-    console.log("🔄 Monthly unlocks reset (guest)", { guestId, anchorDay });
   }
 }
 /**

@@ -56,15 +56,6 @@ export async function fetchTyreDetails(vrm) {
       },
     }
   );
-// 🛞 DEBUG LOGS — PUT HERE
-console.log(
-  "🛞 TyreDetailsList length:",
-  res.data?.Results?.TyreDetails?.TyreDetailsList?.length
-);
 
-console.log(
-  "🛞 TyreDetails keys:",
-  Object.keys(res.data?.Results?.TyreDetails || {})
-);
   return buildTyreConfigurations(res.data);
 }

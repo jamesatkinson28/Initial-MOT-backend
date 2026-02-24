@@ -109,7 +109,6 @@ router.get("/", async (req, res) => {
         };
       }
     } catch (e) {
-      console.log("MOT fetch failed (non-fatal):", e.message);
     }
 
     // ─────────────────────────────────────────────

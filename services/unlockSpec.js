@@ -55,14 +55,7 @@ export async function unlockSpec({
   productId = null,
   platform = null,
   unlockSource = null, // "free" | "paid"
-}) {  console.log("🔥 unlockSpec ENTERED", {
-    vrm,
-    hasUser: !!user,
-    hasGuest: !!guestId,
-    transactionId,
-    productId,
-    platform,
-  });
+}) {  
   let isPremium = false;
   let isRetentionRetry = false;
   let activeEntitlement = null;
@@ -108,11 +101,6 @@ if (!unlockSource) {
     };
   }
 }
-console.log("💳 CREDIT BLOCK CHECK", {
-  unlockSource,
-  transactionId,
-  productId,
-});
 // --------------------------------------------------
 // PAID CREDIT GRANT + BALANCE CHECK
 // --------------------------------------------------
@@ -249,13 +237,7 @@ const lastSnapshot = await db.query(
   `,
   [vrmUpper]
 );
-console.log("📸 SNAPSHOT LOOKUP", {
-  vrm: vrmUpper,
-  found: lastSnapshot.rowCount > 0,
-  fingerprintMatch:
-    lastSnapshot.rowCount > 0 &&
-    lastSnapshot.rows[0].fingerprint === currentFingerprint,
-});
+
 
 let snapshotId;
 let plateReused = false;
@@ -544,10 +526,7 @@ const didInsertUnlock = unlockInsert.rowCount > 0;
 // --------------------------------------------------
 // PAID CREDIT CONSUME (ONLY IF ROW INSERTED)
 // --------------------------------------------------
-console.log("💥 CONSUME CHECK", {
-  unlockSource,
-  didInsertUnlock
-});
+
 if (unlockSource === "paid" && didInsertUnlock) {
   await db.query(
     `

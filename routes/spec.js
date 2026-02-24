@@ -69,7 +69,7 @@ export function buildCleanSpec(apiResults) {
   const vId = vd.VehicleIdentification || {};
   const vTech = vd.DvlaTechnicalDetails || {};
   const vCodes = apiResults?.VehicleCodes || {};
-console.log("🧬 VehicleCodes payload:", vCodes);
+
 
   const model = apiResults?.ModelDetails || {};
   const mId = model.ModelIdentification || {};
@@ -93,7 +93,7 @@ console.log("🧬 VehicleCodes payload:", vCodes);
   const safety = model.Safety || {};
 
   const powertrain = model.Powertrain || {};
-  console.log("POWERTRAIN KEYS:", Object.keys(powertrain));
+
   const ice = powertrain?.IceDetails || {};
   const transmission = powertrain?.Transmission || {};
   

@@ -11,7 +11,7 @@ const router = express.Router();
 // iap.js
 router.post("/spec-unlock", optionalAuth, async (req, res) => {
   try {
-    console.log("📦 RAW BODY", req.body);
+
 
     const {
       vrm,
@@ -22,14 +22,7 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
       unlockSource, // "free" | "paid"
     } = req.body;
 
-    console.log("📦 EXTRACTED", {
-      vrm,
-      guestId,
-      transactionId,
-      productId,
-      platform,
-      unlockSource,
-    });
+
 
     if (!vrm) {
       return res.status(400).json({ success: false, error: "VRM required" });
@@ -43,15 +36,7 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
       });
     }
 
-    console.log("📦 /spec-unlock payload", {
-      vrm,
-      guestId,
-      transactionId,
-      productId,
-      platform,
-      unlockSource,
-      hasUser: !!req.user,
-    });
+
 
     // ✅ Only grant +1 credit when there is an actual store purchase transaction
     if (transactionId && productId) {
@@ -70,8 +55,6 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
           productId,
         ]
       );
-
-      console.log("💳 IAP credit granted (if not already)");
     }
 
     const result = await withTransaction(async (db) => {

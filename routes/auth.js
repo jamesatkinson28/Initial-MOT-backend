@@ -190,11 +190,6 @@ router.post("/login", async (req, res) => {
         [user.uuid, guestId]
       );
 
-      console.log("🔁 LOGIN MERGE GUEST → USER", {
-        userUuid: user.uuid,
-        guestId,
-        rowsAffected: mergeResult.rowCount,
-      });
     }
 	
 	// ─────────────────────────────────────────────

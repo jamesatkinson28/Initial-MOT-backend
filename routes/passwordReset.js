@@ -18,8 +18,13 @@ setInterval(async () => {
       `DELETE FROM password_reset_attempts
        WHERE last_attempt < NOW() - INTERVAL '10 minutes'`
     );
+	
+	// 🚗 DVLA lookup cache (older than 1 hour)
+    await query(
+      `DELETE FROM dvla_lookup_cache
+       WHERE fetched_at < NOW() - INTERVAL '1 hour'`
+    );
 
-    console.log("[Cleanup] Old reset tokens & attempts removed");
   } catch (err) {
     console.error("[Cleanup Error]", err);
   }
