@@ -142,21 +142,31 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   SUBSCRIPTION CLAIM / LINK
+   SUBSCRIPTION CLAIM / LINK (HARDENED)
 ------------------------------------------------------------------- */
 router.post("/subscription", optionalAuth, async (req, res) => {
   try {
-    const { productId, transactionId, originalTransactionId, platform, guestId } = req.body;
+    const {
+      productId,
+      transactionId,
+      originalTransactionId,
+      platform,
+      guestId,
+    } = req.body;
 
     const userUuid = req.user?.id ?? null;
     const gId = guestId ?? req.guestId ?? null;
 
     if (!userUuid && !gId) {
-      return res.status(400).json({ error: "No user or guest identity provided" });
+      return res.status(400).json({
+        error: "No user or guest identity provided",
+      });
     }
 
     if (!productId || !transactionId) {
-      return res.status(400).json({ error: "Missing productId or transactionId" });
+      return res.status(400).json({
+        error: "Missing productId or transactionId",
+      });
     }
 
     const originalTx = originalTransactionId ?? transactionId;
@@ -167,6 +177,33 @@ router.post("/subscription", optionalAuth, async (req, res) => {
         ? "1 year"
         : "1 month";
 
+    // ------------------------------------------------------------
+    // 🔒 Check if entitlement already exists
+    // ------------------------------------------------------------
+    const existingRes = await query(
+      `
+      SELECT user_uuid, guest_id
+      FROM premium_entitlements
+      WHERE original_transaction_id = $1
+      LIMIT 1
+      `,
+      [originalTx]
+    );
+
+    const existing = existingRes.rows[0] ?? null;
+
+    // ------------------------------------------------------------
+    // 🔒 Prevent guest restoring a user-owned subscription
+    // ------------------------------------------------------------
+    if (existing?.user_uuid && !userUuid) {
+      return res.status(403).json({
+        error: "Please sign in to restore this subscription.",
+      });
+    }
+
+    // ------------------------------------------------------------
+    // Insert or safely update entitlement
+    // ------------------------------------------------------------
     const entitlementRes = await query(
       `
       INSERT INTO premium_entitlements (
@@ -179,6 +216,7 @@ router.post("/subscription", optionalAuth, async (req, res) => {
         guest_id,
         premium_until,
         monthly_unlocks_used,
+        monthly_unlocks_reset_at,
         is_confirmed
       )
       VALUES (
@@ -191,22 +229,45 @@ router.post("/subscription", optionalAuth, async (req, res) => {
         $6,
         NOW() + INTERVAL '${interval}',
         0,
+        NOW(),
         false
       )
       ON CONFLICT (original_transaction_id)
       DO UPDATE SET
         latest_transaction_id = EXCLUDED.latest_transaction_id,
-        transaction_id       = EXCLUDED.transaction_id,
-        product_id           = EXCLUDED.product_id,
-        platform             = EXCLUDED.platform,
-        user_uuid            = COALESCE(EXCLUDED.user_uuid, premium_entitlements.user_uuid),
-        guest_id             = COALESCE(EXCLUDED.guest_id, premium_entitlements.guest_id),
-        premium_until        = GREATEST(
-                                premium_entitlements.premium_until,
-                                EXCLUDED.premium_until
-                              ),
-        monthly_unlocks_used = 0,
-        is_confirmed         = premium_entitlements.is_confirmed
+        transaction_id        = EXCLUDED.transaction_id,
+        product_id            = EXCLUDED.product_id,
+        platform              = EXCLUDED.platform,
+
+        -- 👤 Lock ownership properly
+        user_uuid = COALESCE(
+          premium_entitlements.user_uuid,
+          EXCLUDED.user_uuid
+        ),
+
+        guest_id = CASE
+          WHEN premium_entitlements.user_uuid IS NOT NULL
+            THEN NULL
+          ELSE COALESCE(
+            premium_entitlements.guest_id,
+            EXCLUDED.guest_id
+          )
+        END,
+
+        -- ⏳ Only extend time, never shorten
+        premium_until = GREATEST(
+          premium_entitlements.premium_until,
+          EXCLUDED.premium_until
+        ),
+
+        -- 🚫 DO NOT reset unlocks on restore
+        monthly_unlocks_used =
+          premium_entitlements.monthly_unlocks_used,
+
+        monthly_unlocks_reset_at =
+          premium_entitlements.monthly_unlocks_reset_at,
+
+        is_confirmed = premium_entitlements.is_confirmed
       RETURNING premium_until;
       `,
       [
@@ -221,21 +282,25 @@ router.post("/subscription", optionalAuth, async (req, res) => {
 
     const premiumUntil = entitlementRes.rows[0].premium_until;
 
+    // ------------------------------------------------------------
+    // Update users table (without resetting unlock counters)
+    // ------------------------------------------------------------
     if (userUuid) {
       await query(
         `
         UPDATE users
         SET premium = TRUE,
-            premium_until = $2,
-            monthly_unlocks_used = 0,
-            monthly_unlocks_reset_at = NOW()
+            premium_until = $2
         WHERE uuid = $1
         `,
         [userUuid, premiumUntil]
       );
     }
 
-    return res.json({ success: true, premium_until: premiumUntil });
+    return res.json({
+      success: true,
+      premium_until: premiumUntil,
+    });
   } catch (err) {
     console.error("SUBSCRIPTION ERROR:", err);
     return res.status(500).json({ success: false });
