@@ -256,6 +256,58 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/account
+ * Permanently deletes a user account and associated data
+ */
+router.delete("/account", authRequired, async (req, res) => {
+  const userUuid = req.user?.id;
 
+  if (!userUuid) {
+    return res.status(401).json({ error: "Not authorised" });
+  }
+
+  const client = await query("BEGIN");
+
+  try {
+    // 1️⃣ Delete unlock credits ledger
+    await query(
+      `DELETE FROM unlock_credits_ledger WHERE user_uuid = $1`,
+      [userUuid]
+    );
+
+    // 2️⃣ Delete unlocked specs
+    await query(
+      `DELETE FROM unlocked_specs WHERE user_id = $1`,
+      [userUuid]
+    );
+
+    // 3️⃣ Delete premium entitlements
+    await query(
+      `DELETE FROM premium_entitlements WHERE user_uuid = $1`,
+      [userUuid]
+    );
+
+    // 4️⃣ Delete saved vehicles (if you store them)
+    await query(
+      `DELETE FROM vehicles WHERE user_uuid = $1`,
+      [userUuid]
+    );
+
+    // 5️⃣ Finally delete user
+    await query(
+      `DELETE FROM users WHERE uuid = $1`,
+      [userUuid]
+    );
+
+    await query("COMMIT");
+
+    return res.json({ success: true });
+  } catch (err) {
+    await query("ROLLBACK");
+    console.error("[Account] delete error:", err);
+    return res.status(500).json({ error: "Failed to delete account" });
+  }
+});
 
 export default router;
