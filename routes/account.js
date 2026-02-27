@@ -258,7 +258,8 @@ router.get("/account/overview", optionalAuth, async (req, res) => {
 
 /**
  * DELETE /api/account
- * Permanently deletes a user account and associated data
+ * Permanently deletes user account and associated personal data.
+ * Subscription entitlements are detached for audit integrity.
  */
 router.delete("/account", authRequired, async (req, res) => {
   const userUuid = req.user?.id;
@@ -267,34 +268,34 @@ router.delete("/account", authRequired, async (req, res) => {
     return res.status(401).json({ error: "Not authorised" });
   }
 
-  const client = await query("BEGIN");
-
   try {
-    // 1️⃣ Delete unlock credits ledger
+    await query("BEGIN");
+
+    // 1️⃣ Orphan premium entitlements (keep transaction history)
+    await query(
+      `
+      UPDATE premium_entitlements
+      SET user_uuid = NULL,
+          guest_id = NULL,
+          status = 'orphaned'
+      WHERE user_uuid = $1
+      `,
+      [userUuid]
+    );
+
+    // 2️⃣ Delete unlock credits
     await query(
       `DELETE FROM unlock_credits_ledger WHERE user_uuid = $1`,
       [userUuid]
     );
 
-    // 2️⃣ Delete unlocked specs
+    // 3️⃣ Delete unlocked specs
     await query(
       `DELETE FROM unlocked_specs WHERE user_id = $1`,
       [userUuid]
     );
 
-    // 3️⃣ Delete premium entitlements
-    await query(
-      `DELETE FROM premium_entitlements WHERE user_uuid = $1`,
-      [userUuid]
-    );
-
-    // 4️⃣ Delete saved vehicles (if you store them)
-    await query(
-      `DELETE FROM vehicles WHERE user_uuid = $1`,
-      [userUuid]
-    );
-
-    // 5️⃣ Finally delete user
+    // 4️⃣ Delete user record
     await query(
       `DELETE FROM users WHERE uuid = $1`,
       [userUuid]
