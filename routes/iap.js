@@ -238,6 +238,9 @@ router.post("/subscription", optionalAuth, async (req, res) => {
         transaction_id        = EXCLUDED.transaction_id,
         product_id            = EXCLUDED.product_id,
         platform              = EXCLUDED.platform,
+		
+		 -- ✅ Reactivate if previously orphaned
+		status                = 'active',
 
         -- 👤 Lock ownership properly
         user_uuid = COALESCE(
