@@ -27,7 +27,7 @@ function signAccessToken(user) {
       tokenVersion: user.token_version
     },
     process.env.JWT_SECRET,
-    { expiresIn: "30s" }
+    { expiresIn: "30m" }
   );
 }
 
