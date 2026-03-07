@@ -2,6 +2,7 @@ import express from "express";
 import { withTransaction, query } from "../db/db.js";
 import { unlockSpec } from "../services/unlockSpec.js";
 import { optionalAuth } from "../middleware/auth.js";
+import { verifyAndroidSubscription } from "../google/googlePlayVerifier.js";
 
 const router = express.Router();
 
@@ -168,6 +169,42 @@ router.post("/subscription", optionalAuth, async (req, res) => {
         error: "Missing productId or transactionId",
       });
     }
+	
+	// ------------------------------------------------------------
+	// 🤖 Verify Android purchase with Google Play
+	// ------------------------------------------------------------
+	if (platform === "android") {
+	  try {
+		const verification = await verifyAndroidSubscription(
+		  transactionId,
+		  productId
+		);
+
+		const expiry = Number(verification.expiryTimeMillis);
+		
+
+		if (!expiry) {
+		  return res.status(400).json({
+			error: "Invalid Android purchase",
+		  });
+		}
+
+		req.androidExpiry = expiry;
+		
+		console.log("✅ ANDROID PURCHASE VERIFIED", {
+		  productId,
+		  transactionId,
+		  expiry,
+		});
+
+	  } catch (err) {
+		console.error("❌ ANDROID VERIFICATION FAILED:", err);
+
+		return res.status(400).json({
+		  error: "Android purchase verification failed",
+		});
+	  }
+	}
 
     const originalTx = originalTransactionId ?? transactionId;
     const latestTx = transactionId;
@@ -227,7 +264,11 @@ router.post("/subscription", optionalAuth, async (req, res) => {
         $4,
         $5,
         $6,
-        NOW() + INTERVAL '${interval}',
+        CASE
+		  WHEN $4 = 'android'
+		  THEN to_timestamp($7 / 1000.0)
+		  ELSE NOW() + INTERVAL '${interval}'
+		END,
         0,
         NOW(),
         false
@@ -280,6 +321,7 @@ router.post("/subscription", optionalAuth, async (req, res) => {
         platform ?? "ios",
         userUuid,
         userUuid ? null : gId,
+		req.androidExpiry ?? null,
       ]
     );
 
