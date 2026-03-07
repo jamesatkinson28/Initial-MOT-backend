@@ -125,3 +125,5 @@ router.post("/google-rtdn", async (req, res) => {
     return res.status(500).json({ ok: false });
   }
 });
+
+export default router;
