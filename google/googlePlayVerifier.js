@@ -1,12 +1,8 @@
-import { google } from "googleapis";
 import fs from "fs";
-import path from "path";
 import { google } from "googleapis";
 
 const serviceAccount = JSON.parse(
-  fs.readFileSync(
-    new URL("./googlePlayServiceAccount.json", import.meta.url)
-  )
+  fs.readFileSync(new URL("./googlePlayServiceAccount.json", import.meta.url))
 );
 
 const auth = new google.auth.GoogleAuth({
