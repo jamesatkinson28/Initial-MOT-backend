@@ -89,7 +89,8 @@ router.post("/", async (req, res) => {
 	// --------------------------------------------------
 	if (
 	  notificationType === "REFUND" ||
-	  notificationType === "REVOKE"
+	  notificationType === "REVOKE" ||
+	  notificationType === "DID_REVOKE"
 	) {
 	  // 1️⃣ Revoke premium going forward
 	  await query(

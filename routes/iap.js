@@ -147,6 +147,11 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
 ------------------------------------------------------------------- */
 router.post("/subscription", optionalAuth, async (req, res) => {
   try {
+	 console.log("📩 /iap/subscription request received", {
+      body: req.body,
+      user: req.user?.id ?? null,
+      guest: req.body?.guestId ?? null,
+    }); 
     const {
       productId,
       transactionId,
@@ -157,6 +162,11 @@ router.post("/subscription", optionalAuth, async (req, res) => {
 
     const userUuid = req.user?.id ?? null;
     const gId = guestId ?? req.guestId ?? null;
+	
+	console.log("👤 Identity resolved", {
+	  userUuid,
+	  guestId: gId,
+	});
 
     if (!userUuid && !gId) {
       return res.status(400).json({
@@ -175,13 +185,18 @@ router.post("/subscription", optionalAuth, async (req, res) => {
 	// ------------------------------------------------------------
 	if (platform === "android") {
 	  try {
+		  
+		console.log("🤖 Verifying Android purchase", {
+		  productId,
+		  transactionId,
+		});  
 		const verification = await verifyAndroidSubscription(
 		  transactionId,
 		  productId
 		);
 
 		const expiry = Number(verification.expiryTimeMillis);
-		
+		console.log("📦 Google verification response", verification);
 
 		if (!expiry) {
 		  return res.status(400).json({
@@ -341,13 +356,22 @@ router.post("/subscription", optionalAuth, async (req, res) => {
         [userUuid, premiumUntil]
       );
     }
+	
+	console.log("✅ Subscription processed successfully", {
+	  premiumUntil,
+	  productId,
+	  platform,
+	});
 
     return res.json({
       success: true,
       premium_until: premiumUntil,
     });
   } catch (err) {
-    console.error("SUBSCRIPTION ERROR:", err);
+    console.error("🔥 SUBSCRIPTION ROUTE ERROR", {
+	  error: err,
+	  body: req.body,
+	});
     return res.status(500).json({ success: false });
   }
 });
