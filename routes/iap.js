@@ -12,8 +12,6 @@ const router = express.Router();
 // iap.js
 router.post("/spec-unlock", optionalAuth, async (req, res) => {
   try {
-
-
     const {
       vrm,
       guestId,
@@ -23,13 +21,13 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
       unlockSource, // "free" | "paid"
     } = req.body;
 
-
+    const userUuid = req.user?.id ?? null;
+    const resolvedGuestId = guestId ?? req.guestId ?? null;
 
     if (!vrm) {
       return res.status(400).json({ success: false, error: "VRM required" });
     }
 
-    // ✅ REQUIRE unlockSource (prevents accidental "free")
     if (!unlockSource || (unlockSource !== "free" && unlockSource !== "paid")) {
       return res.status(400).json({
         success: false,
@@ -37,9 +35,14 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
       });
     }
 
+    if (!userUuid && !resolvedGuestId) {
+      return res.status(400).json({
+        success: false,
+        error: "No user or guest identity provided",
+      });
+    }
 
-
-    // ✅ Only grant +1 credit when there is an actual store purchase transaction
+    // Only grant +1 credit for a real fresh store purchase
     if (transactionId && productId) {
       await query(
         `
@@ -49,8 +52,8 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
         ON CONFLICT DO NOTHING
         `,
         [
-          req.user?.id ?? null,
-          req.user ? null : (guestId ?? null),
+          userUuid,
+          userUuid ? null : resolvedGuestId,
           String(transactionId),
           platform ?? null,
           productId,
@@ -63,11 +66,10 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
         db,
         vrm,
         user: req.user ?? null,
-        guestId: guestId ?? null,
+        guestId: resolvedGuestId,
         transactionId: transactionId ?? null,
         productId: productId ?? null,
         platform: platform ?? null,
-        // ✅ THIS IS THE FIX (stop passing null)
         unlockSource,
       });
     });
@@ -141,7 +143,6 @@ router.post("/spec-unlock", optionalAuth, async (req, res) => {
     });
   }
 });
-
 /* ------------------------------------------------------------------
    SUBSCRIPTION CLAIM / LINK (HARDENED)
 ------------------------------------------------------------------- */
