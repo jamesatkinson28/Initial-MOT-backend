@@ -308,7 +308,7 @@ router.post("/subscription", optionalAuth, async (req, res) => {
         guest_id = CASE
 		  WHEN premium_entitlements.user_uuid IS NOT NULL
 			THEN NULL
-		  ELSE EXCLUDED.guest_id
+		  ELSE COALESCE(EXCLUDED.guest_id, premium_entitlements.guest_id)
 		END
 
         -- ⏳ Only extend time, never shorten
