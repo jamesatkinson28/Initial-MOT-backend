@@ -306,13 +306,10 @@ router.post("/subscription", optionalAuth, async (req, res) => {
         ),
 
         guest_id = CASE
-          WHEN premium_entitlements.user_uuid IS NOT NULL
-            THEN NULL
-          ELSE COALESCE(
-            premium_entitlements.guest_id,
-            EXCLUDED.guest_id
-          )
-        END,
+		  WHEN premium_entitlements.user_uuid IS NOT NULL
+			THEN NULL
+		  ELSE EXCLUDED.guest_id
+		END
 
         -- ⏳ Only extend time, never shorten
         premium_until = GREATEST(
